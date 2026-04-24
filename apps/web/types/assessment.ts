@@ -61,17 +61,23 @@ export type GradingResult = {
   id: string
   submission_id: string
   question_id: string
-  ocr_text?: string
-  ocr_confidence?: number
-  ocr_provider?: string
-  score?: number
-  max_score?: number
-  errors_detected?: string[]
-  student_feedback?: string
-  teacher_note?: string
-  review_status: "pending" | "auto" | "needs_review" | "manual_required" | "approved"
-  teacher_override_score?: number
-  warnings?: string[]
+  ocr_text?: string | null
+  ocr_confidence?: number | null
+  ocr_provider?: string | null
+  score?: number | null
+  max_score?: number | null
+  errors_detected?: string[] | null
+  student_feedback?: string | null
+  teacher_note?: string | null
+  review_status:
+    | "pending"
+    | "auto"
+    | "needs_review"
+    | "manual_required"
+    | "approved"
+  teacher_override_score?: number | null
+  teacher_override_note?: string | null
+  warnings?: string[] | null
   graded_at: string
 }
 
