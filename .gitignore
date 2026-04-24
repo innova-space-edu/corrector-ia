@@ -1,0 +1,56 @@
+# ─── ENV ──────────────────────────────────────────────────────────
+.env
+.env.local
+!env.example
+!.env.example
+!services/ocr-service/.env.example
+.env.development.local
+.env.test.local
+.env.production.local
+*.env
+
+# ─── NODE ─────────────────────────────────────────────────────────
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+out/
+
+# ─── PYTHON ───────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# ─── MODELOS OCR (se descargan automáticamente, no se suben) ──────
+# Surya
+~/.cache/surya/
+# PaddleOCR
+~/.paddleocr/
+# HuggingFace
+~/.cache/huggingface/
+
+# ─── OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ──────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+
+# ─── LOGS ─────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── UPLOADS TEMPORALES ───────────────────────────────────────────
+uploads/
+tmp/
+temp/

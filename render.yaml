@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: corrector-ia-ocr
+    runtime: docker
+    dockerfilePath: ./services/ocr-service/Dockerfile
+    dockerContext: ./services/ocr-service
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+
+    envVars:
+      - key: AI_PROVIDER_API_KEY
+        sync: false          # lo cargas manualmente en Render dashboard
+      - key: AI_PARSE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+      - key: AI_MODEL
+        value: gemini-2.5-flash-preview-05-20
+      - key: NEXT_PUBLIC_SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: PORT
+        value: "8001"
+
+    healthCheckPath: /health
