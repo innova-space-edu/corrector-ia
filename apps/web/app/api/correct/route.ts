@@ -1,26 +1,7 @@
-/**
- * app/api/correct/route.ts
- *
- * Ruta API del panel web que recibe una imagen de ejercicio,
- * la manda al orquestador Python (LangGraph),
- * y guarda el resultado en Supabase.
- *
- * POST /api/correct
- * Body: {
- *   submissionId: string
- *   studentId: string
- *   questionId: string
- *   imageUrl: string        — URL pública temporal de Supabase Storage
- *   subject: string         — math | language | science | history
- *   maxPoints: number
- *   questionStatement: string
- *   rubric: object
- *   assessmentId: string
- * }
- */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL!;
 
 export async function POST(req: NextRequest) {
@@ -154,7 +135,7 @@ export async function POST(req: NextRequest) {
  * con exigencia configurable (default 60%)
  */
 async function _tryCalculateFinalGrade(
-  supabase: SupabaseClient<unknown, { PostgrestVersion: string }, never, never, { PostgrestVersion: string }>,
+  supabase: any,
   submissionId: string,
   assessmentId: string
 ): Promise<void> {
