@@ -149,11 +149,26 @@ async function _tryCalculateFinalGrade(
     if (error || !results) return;
 
     // Solo calcular si todos están corregidos automáticamente
-    const allAuto = results.every((r) => r.review_status === "auto");
+    type GradingResultRow = {
+      score: number | null;
+      max_score: number | null;
+      review_status: string | null;
+    };
+    
+    const typedResults = results as GradingResultRow[];
+    
+    const allAuto = typedResults.every((r: GradingResultRow) => r.review_status === "auto");
     if (!allAuto) return;
-
-    const totalObtained = results.reduce((sum, r) => sum + (r.score ?? 0), 0);
-    const totalMax = results.reduce((sum, r) => sum + (r.max_score ?? 0), 0);
+    
+    const totalObtained = typedResults.reduce(
+      (sum: number, r: GradingResultRow) => sum + (r.score ?? 0),
+      0
+    );
+    
+    const totalMax = typedResults.reduce(
+      (sum: number, r: GradingResultRow) => sum + (r.max_score ?? 0),
+      0
+    );
 
     if (totalMax === 0) return;
 
