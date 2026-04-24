@@ -20,6 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL!;
 
 export async function POST(req: NextRequest) {
