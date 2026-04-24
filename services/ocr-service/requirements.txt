@@ -1,33 +1,18 @@
-# ─── OCR CORE ─────────────────────────────────────────────────────────────────
-# PaddleOCR: funciona en Render free tier (512MB RAM)
-paddlepaddle>=2.6.2,<3.0
+paddlepaddle==2.6.1
 paddleocr>=2.8.0
-
-# Surya y Chandra requieren >1GB RAM
-# Descomenta SOLO si usas Render paid ($7/mes) o servidor propio
 # surya-ocr>=0.7.0
 # chandra-ocr>=0.2.0
-
-# ─── IMAGE PROCESSING ─────────────────────────────────────────────────────────
 Pillow>=10.0.0
 numpy>=1.24.0
 opencv-python-headless>=4.8.0
 scipy>=1.11.0
-
-# ─── API / SERVER ─────────────────────────────────────────────────────────────
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 httpx>=0.27.0
-
-# ─── AI AGENT ─────────────────────────────────────────────────────────────────
 langgraph>=0.2.0
 langchain>=0.2.0
 langchain-community>=0.2.0
-
-# ─── MATH VALIDATION ──────────────────────────────────────────────────────────
 sympy>=1.12
-
-# ─── UTILS ────────────────────────────────────────────────────────────────────
 python-dotenv>=1.0.0
 pydantic>=2.7.0

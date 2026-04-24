@@ -1,28 +1,31 @@
 """
 Microservicio OCR para el Corrector IA
-Surya (principal) → Chandra OCR (secundario) → PaddleOCR (fallback)
+PaddleOCR principal + orquestador LangGraph
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import logging
 from typing import Optional
+import logging
 import time
 
 from services.image_preprocess import preprocess_image
 from services.quality_check import check_image_quality
-from services.extract_ocr import extract_with_surya, extract_with_chandra, extract_with_paddle
+from services.extract_ocr import extract_with_paddle
 from services.parse_math_steps import parse_math_response
 from services.merge_confidence import merge_and_score
+
+# Importar el router del orquestador
+from orchestrate_endpoint import router as orchestrate_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Corrector IA — OCR Service",
-    description="Microservicio de OCR para exámenes manuscritos",
-    version="1.0.0"
+    description="Microservicio OCR para exámenes manuscritos",
+    version="1.1.0"
 )
 
 app.add_middleware(
@@ -32,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Incluir router del orquestador ──────────────────────────────────────────
+app.include_router(orchestrate_router)
 
 
 class OCRResponse(BaseModel):
@@ -49,31 +55,37 @@ class OCRResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     providers: dict[str, bool]
+    endpoints: list[str]
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Verifica qué proveedores OCR están disponibles."""
-    providers = {}
+    providers: dict[str, bool] = {}
+
     try:
-        from surya.ocr import run_ocr
+        from surya.ocr import run_ocr  # type: ignore
         providers["surya"] = True
     except ImportError:
         providers["surya"] = False
 
     try:
-        import chandra_ocr
+        import chandra_ocr  # type: ignore
         providers["chandra"] = True
     except ImportError:
         providers["chandra"] = False
 
     try:
-        from paddleocr import PaddleOCR
+        from paddleocr import PaddleOCR  # type: ignore
         providers["paddleocr"] = True
     except ImportError:
         providers["paddleocr"] = False
 
-    return {"status": "ok", "providers": providers}
+    return {
+        "status": "ok",
+        "providers": providers,
+        "endpoints": ["/health", "/ocr", "/orchestrate"]
+    }
 
 
 @app.post("/ocr", response_model=OCRResponse)
@@ -81,19 +93,13 @@ async def process_image(
     file: UploadFile = File(...),
     subject: str = "math",
     question_id: Optional[str] = None,
-    force_provider: Optional[str] = None
 ):
     """
-    Endpoint principal OCR.
-    Recibe imagen → extrae texto → parsea pasos matemáticos → devuelve JSON.
-
-    Parámetros:
-    - subject: math | language | science | history
-    - question_id: ID del ejercicio (para logging)
-    - force_provider: surya | chandra | paddle (para testing)
+    Endpoint OCR directo.
+    Recibe imagen → extrae texto → parsea pasos → devuelve JSON.
     """
     start_time = time.time()
-    warnings = []
+    warnings: list[str] = []
 
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
@@ -105,61 +111,59 @@ async def process_image(
     if len(raw_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Imagen demasiado grande (máx 10MB)")
 
-    logger.info(f"[OCR] Procesando {file.filename} | subject={subject} | q={question_id}")
+    logger.info(f"[OCR] {file.filename} | subject={subject} | q={question_id}")
 
-    # 1. Preprocesar imagen
+    # 1. Preprocesar
     processed_image, preprocess_meta = preprocess_image(raw_bytes)
     if preprocess_meta.get("was_rotated"):
         warnings.append("Imagen rotada automáticamente")
     if preprocess_meta.get("low_contrast"):
-        warnings.append("Contraste bajo detectado, se aplicó mejora")
+        warnings.append("Contraste bajo — se aplicó mejora")
 
-    # 2. Verificar calidad
+    # 2. Calidad
     quality_score = check_image_quality(processed_image)
     if quality_score < 0.3:
-        warnings.append(f"Calidad de imagen baja ({quality_score:.0%}) — resultado puede ser inexacto")
+        warnings.append(f"Calidad baja ({quality_score:.0%})")
 
-    # 3. Extraer texto con cascade de proveedores
+    # 3. OCR — cascade de proveedores
     ocr_result = None
     provider_used = "none"
 
-    providers_to_try = _get_provider_order(force_provider, subject, quality_score)
+    providers_to_try = _get_provider_order(subject, quality_score)
 
     for provider in providers_to_try:
         try:
-            logger.info(f"[OCR] Intentando con: {provider}")
-
             if provider == "surya":
+                from services.extract_ocr import extract_with_surya
                 ocr_result = extract_with_surya(processed_image, subject=subject)
             elif provider == "chandra":
+                from services.extract_ocr import extract_with_chandra
                 ocr_result = extract_with_chandra(processed_image)
             elif provider == "paddle":
                 ocr_result = extract_with_paddle(processed_image)
 
             if ocr_result and ocr_result.get("confidence", 0) > 0.15:
                 provider_used = provider
-                logger.info(f"[OCR] Éxito con {provider} | conf={ocr_result['confidence']:.2f}")
                 break
             else:
-                warnings.append(f"{provider} retornó confianza baja, intentando siguiente")
-
+                warnings.append(f"{provider}: confianza baja")
         except Exception as e:
             logger.warning(f"[OCR] {provider} falló: {e}")
             warnings.append(f"{provider} no disponible")
-            continue
 
     if not ocr_result:
         raise HTTPException(
             status_code=503,
-            detail="Todos los proveedores OCR fallaron. Verifica que estén instalados."
+            detail="Todos los proveedores OCR fallaron."
         )
 
-    # 4. Parsear pasos matemáticos (si aplica)
-    math_steps, final_answer = [], None
+    # 4. Parsear pasos matemáticos
+    math_steps: list[str] = []
+    final_answer: Optional[str] = None
     if subject == "math" and ocr_result.get("text"):
         math_steps, final_answer = parse_math_response(ocr_result["text"])
 
-    # 5. Merge y score final
+    # 5. Score final
     final_confidence = merge_and_score(
         ocr_confidence=ocr_result.get("confidence", 0.5),
         quality_score=quality_score,
@@ -168,7 +172,6 @@ async def process_image(
     )
 
     elapsed_ms = int((time.time() - start_time) * 1000)
-    logger.info(f"[OCR] Completado en {elapsed_ms}ms | conf={final_confidence:.2f} | proveedor={provider_used}")
 
     return OCRResponse(
         success=True,
@@ -183,18 +186,23 @@ async def process_image(
     )
 
 
-def _get_provider_order(force: Optional[str], subject: str, quality: float) -> list[str]:
-    """Define el orden de proveedores según contexto."""
-    if force:
-        return [force]
+def _get_provider_order(subject: str, quality: float) -> list[str]:
+    """Orden dinámico según contexto."""
+    # Intentar importar Surya primero si está disponible
+    try:
+        from surya.ocr import run_ocr  # type: ignore
+        if subject == "math" and quality >= 0.5:
+            return ["surya", "paddle"]
+        if quality < 0.4:
+            return ["paddle", "surya"]
+        return ["surya", "paddle"]
+    except ImportError:
+        pass
 
-    # Para math con calidad alta: Surya primero (tiene modo math)
-    if subject == "math" and quality >= 0.5:
-        return ["surya", "chandra", "paddle"]
+    try:
+        import chandra_ocr  # type: ignore
+        return ["chandra", "paddle"]
+    except ImportError:
+        pass
 
-    # Para manuscritos difíciles (baja calidad): Chandra primero
-    if quality < 0.4:
-        return ["chandra", "surya", "paddle"]
-
-    # Default
-    return ["surya", "chandra", "paddle"]
+    return ["paddle"]
