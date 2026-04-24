@@ -1,6 +1,6 @@
 # ─── OCR CORE ─────────────────────────────────────────────────────────────────
 # PaddleOCR: funciona en Render free tier (512MB RAM)
-paddlepaddle==2.6.1
+paddlepaddle>=2.6.2,<3.0
 paddleocr>=2.8.0
 
 # Surya y Chandra requieren >1GB RAM
