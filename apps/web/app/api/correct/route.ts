@@ -1,3 +1,23 @@
+/**
+ * app/api/correct/route.ts
+ *
+ * Ruta API del panel web que recibe una imagen de ejercicio,
+ * la manda al orquestador Python (LangGraph),
+ * y guarda el resultado en Supabase.
+ *
+ * POST /api/correct
+ * Body: {
+ *   submissionId: string
+ *   studentId: string
+ *   questionId: string
+ *   imageUrl: string        — URL pública temporal de Supabase Storage
+ *   subject: string         — math | language | science | history
+ *   maxPoints: number
+ *   questionStatement: string
+ *   rubric: object
+ *   assessmentId: string
+ * }
+ */
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -135,7 +155,7 @@ export async function POST(req: NextRequest) {
  * con exigencia configurable (default 60%)
  */
 async function _tryCalculateFinalGrade(
-  supabase: any,
+  supabase: ReturnType<typeof createClient>,
   submissionId: string,
   assessmentId: string
 ): Promise<void> {
@@ -149,26 +169,11 @@ async function _tryCalculateFinalGrade(
     if (error || !results) return;
 
     // Solo calcular si todos están corregidos automáticamente
-    type GradingResultRow = {
-      score: number | null;
-      max_score: number | null;
-      review_status: string | null;
-    };
-    
-    const typedResults = results as GradingResultRow[];
-    
-    const allAuto = typedResults.every((r: GradingResultRow) => r.review_status === "auto");
+    const allAuto = results.every((r) => r.review_status === "auto");
     if (!allAuto) return;
-    
-    const totalObtained = typedResults.reduce(
-      (sum: number, r: GradingResultRow) => sum + (r.score ?? 0),
-      0
-    );
-    
-    const totalMax = typedResults.reduce(
-      (sum: number, r: GradingResultRow) => sum + (r.max_score ?? 0),
-      0
-    );
+
+    const totalObtained = results.reduce((sum, r) => sum + (r.score ?? 0), 0);
+    const totalMax = results.reduce((sum, r) => sum + (r.max_score ?? 0), 0);
 
     if (totalMax === 0) return;
 

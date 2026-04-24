@@ -1,8 +1,12 @@
 # ─── OCR CORE ─────────────────────────────────────────────────────────────────
-surya-ocr>=0.7.0
-chandra-ocr>=0.2.0
-paddlepaddle>=2.6.0
+# PaddleOCR: funciona en Render free tier (512MB RAM)
+paddlepaddle==2.6.1
 paddleocr>=2.8.0
+
+# Surya y Chandra requieren >1GB RAM
+# Descomenta SOLO si usas Render paid ($7/mes) o servidor propio
+# surya-ocr>=0.7.0
+# chandra-ocr>=0.2.0
 
 # ─── IMAGE PROCESSING ─────────────────────────────────────────────────────────
 Pillow>=10.0.0
