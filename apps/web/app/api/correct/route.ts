@@ -20,8 +20,6 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
 const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL!;
 
 export async function POST(req: NextRequest) {
@@ -155,7 +153,7 @@ export async function POST(req: NextRequest) {
  * con exigencia configurable (default 60%)
  */
 async function _tryCalculateFinalGrade(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient<unknown, { PostgrestVersion: string }, never, never, { PostgrestVersion: string }>,
   submissionId: string,
   assessmentId: string
 ): Promise<void> {
