@@ -1,4 +1,4 @@
-paddlepaddle==2.6.1
+paddlepaddle>=2.6.2,<3.0
 paddleocr>=2.8.0
 # surya-ocr>=0.7.0
 # chandra-ocr>=0.2.0
