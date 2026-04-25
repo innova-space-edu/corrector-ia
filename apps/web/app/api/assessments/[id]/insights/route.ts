@@ -1,9 +1,27 @@
 // app/api/assessments/[id]/insights/route.ts
+
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { callAI } from "@/lib/ai/ai-router"
 
 export const runtime = "nodejs"
+
+type SubmissionRow = {
+  final_grade: number | null
+  total_score: number | null
+  max_score: number | null
+  percentage: number | null
+  grading_status: string | null
+}
+
+type ResultRow = {
+  question_id: string
+  score: number | null
+  max_score: number | null
+  errors_detected: string[] | null
+  ocr_confidence: number | null
+  review_status: string | null
+}
 
 export async function POST(
   _req: NextRequest,
@@ -12,7 +30,7 @@ export async function POST(
   const { id: assessmentId } = await params
   const supabase = createAdminClient()
 
-  // 1. Recopilar todos los resultados de la evaluación
+  // 1. Datos
   const { data: results } = await supabase
     .from("grading_results")
     .select("question_id, score, max_score, errors_detected, ocr_confidence, review_status")
@@ -36,15 +54,22 @@ export async function POST(
     )
   }
 
-  // 2. Calcular estadísticas
-  const graded = submissions.filter((s) => s.final_grade !== null)
-  const grades = graded.map((s) => s.final_grade ?? 0)
-  const avgGrade = grades.reduce((a, b) => a + b, 0) / grades.length
-  const passRate = (grades.filter((g) => g >= 4).length / grades.length) * 100
+  const typedResults = results as ResultRow[]
+  const typedSubmissions = submissions as SubmissionRow[]
+
+  // 2. Estadísticas
+  const graded = typedSubmissions.filter((s: SubmissionRow) => s.final_grade !== null)
+  const grades = graded.map((s: SubmissionRow) => s.final_grade ?? 0)
+
+  const avgGrade =
+    grades.reduce((a: number, b: number) => a + b, 0) / grades.length
+
+  const passRate =
+    (grades.filter((g: number) => g >= 4).length / grades.length) * 100
 
   const byQuestion: Record<string, { scores: number[]; errors: string[] }> = {}
 
-  for (const r of results) {
+  for (const r of typedResults) {
     if (!byQuestion[r.question_id]) {
       byQuestion[r.question_id] = { scores: [], errors: [] }
     }
@@ -62,7 +87,9 @@ export async function POST(
     question_id: qid,
     avg_pct: data.scores.length
       ? Math.round(
-          (data.scores.reduce((a, b) => a + b, 0) / data.scores.length) * 100
+          (data.scores.reduce((a: number, b: number) => a + b, 0) /
+            data.scores.length) *
+            100
         )
       : null,
     top_errors: [...new Set(data.errors)].slice(0, 3),
@@ -73,7 +100,10 @@ export async function POST(
     .sort((a, b) => (a.avg_pct ?? 100) - (b.avg_pct ?? 100))
     .slice(0, 3)
 
-  const allErrors = results.flatMap((r) => r.errors_detected ?? [])
+  const allErrors = typedResults.flatMap(
+    (r: ResultRow) => r.errors_detected ?? []
+  )
+
   const errorFreq: Record<string, number> = {}
 
   for (const e of allErrors) {
@@ -86,7 +116,29 @@ export async function POST(
     .map(([e, count]) => ({ error: e, count }))
 
   // 3. IA
-  const prompt = `Eres un asistente pedagógico experto...`
+  const prompt = `
+Eres un asistente pedagógico experto. Analiza los resultados de esta evaluación escolar chilena y entrega un análisis breve y útil.
+
+Evaluación: ${assessment?.title} (${assessment?.subject}, ${assessment?.grade_level})
+Promedio: ${avgGrade.toFixed(1)}
+Aprobación: ${passRate.toFixed(0)}%
+
+Preguntas difíciles:
+${hardest.map((q) => `- ${q.question_id}: ${q.avg_pct}%`).join("\n")}
+
+Errores frecuentes:
+${commonErrors.map((e) => `- ${e.error}`).join("\n")}
+
+Responde en JSON:
+{
+  "resumen": "",
+  "fortalezas": [],
+  "debilidades": [],
+  "temas_reforzar": [],
+  "sugerencia_clase": "",
+  "estudiantes_riesgo_pct": 0
+}
+`
 
   let aiAnalysis = null
 
@@ -101,11 +153,9 @@ export async function POST(
     const clean = aiResult.content.replace(/```json|```/g, "").trim()
     const match = clean.match(/\{[\s\S]+\}/)
 
-    if (match) {
-      aiAnalysis = JSON.parse(match[0])
-    }
+    if (match) aiAnalysis = JSON.parse(match[0])
   } catch (e) {
-    console.error("[insights] AI analysis failed:", e)
+    console.error("[insights] AI error:", e)
   }
 
   // 4. Guardar
