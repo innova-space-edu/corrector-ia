@@ -1,3 +1,54 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --brand-blue: #2563eb;
+  --brand-sky: #38bdf8;
+  --brand-violet: #8b5cf6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #0f172a;
+}
+
+::selection {
+  background: #bfdbfe;
+  color: #0f172a;
+}
+
+.rainbow-loader {
+  background: linear-gradient(90deg, #2563eb, #06b6d4, #22c55e, #facc15, #fb7185, #8b5cf6, #2563eb);
+  background-size: 220% 100%;
+  animation: rainbow-slide 1.4s linear infinite;
+}
+
+.rainbow-border {
+  position: relative;
+}
+
+.rainbow-border::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #2563eb, #38bdf8, #22c55e, #facc15, #fb7185, #8b5cf6);
+  opacity: 0.55;
+}
+
+@keyframes rainbow-slide {
+  from { background-position: 0% 50%; }
+  to { background-position: 220% 50%; }
+}

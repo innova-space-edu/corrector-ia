@@ -3,14 +3,10 @@ import "./globals.css"
 
 export const metadata: Metadata = {
   title: "Corrector IA Docente",
-  description: "Plataforma de corrección automática de exámenes manuscritos",
+  description: "Plataforma docente para corrección automática, retroalimentación e insights pedagógicos con IA.",
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
       <body>{children}</body>
