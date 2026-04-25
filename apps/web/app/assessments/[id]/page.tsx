@@ -245,12 +245,10 @@ export default function AssessmentPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <a
-                          href={`/assessments/${id}/review/${s.id}`}
-                          className="text-blue-600 hover:underline text-xs"
-                        >
-                          Revisar →
-                        </a>
+                        <div className="flex gap-3 justify-end">
+                          <a href={`/assessments/${id}/review/${s.id}`} className="text-blue-600 hover:underline text-xs">Revisar</a>
+                          <a href={`/assessments/${id}/report/${s.id}`} className="text-gray-400 hover:underline text-xs">Informe</a>
+                        </div>
                       </td>
                     </tr>
                   ))}
