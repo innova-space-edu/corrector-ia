@@ -2,9 +2,8 @@
 import 'package:flutter/material.dart';
 import '../models/assessment.dart';
 import '../services/assessment_service.dart';
-import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 import 'upload_screen.dart';
-import 'login_screen.dart';
 
 class AssessmentsScreen extends StatefulWidget {
   const AssessmentsScreen({super.key});
@@ -13,163 +12,211 @@ class AssessmentsScreen extends StatefulWidget {
 }
 
 class _AssessmentsScreenState extends State<AssessmentsScreen> {
-  final _service = AssessmentService();
-  final _auth = AuthService();
-  List<Assessment> _assessments = [];
+  final _svc = AssessmentService();
+  List<Assessment> _all = [];
+  List<Assessment> _filtered = [];
   bool _loading = true;
-  String? _error;
+  String _search = '';
+  String _filter = 'all'; // all | active | draft
 
   @override
   void initState() { super.initState(); _load(); }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() => _loading = true);
     try {
-      final data = await _service.getActiveAssessments();
-      setState(() => _assessments = data);
+      final data = await _svc.getAllAssessments();
+      setState(() { _all = data; _applyFilter(); _loading = false; });
     } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
       setState(() => _loading = false);
     }
   }
 
-  Future<void> _signOut() async {
-    await _auth.signOut();
-    if (mounted) {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const LoginScreen()));
-    }
+  void _applyFilter() {
+    _filtered = _all.where((a) {
+      final matchesSearch = _search.isEmpty ||
+          a.title.toLowerCase().contains(_search.toLowerCase()) ||
+          a.subjectLabel.toLowerCase().contains(_search.toLowerCase());
+      final matchesStatus = _filter == 'all' || a.status == _filter;
+      return matchesSearch && matchesStatus;
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F4),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('Corrector IA',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(0.5),
-          child: Container(height: 0.5, color: const Color(0xFFE5E5E4)),
-        ),
+        title: const Text('Evaluaciones'),
+        automaticallyImplyLeading: false,
         actions: [
-          IconButton(icon: const Icon(Icons.refresh_rounded, color: Color(0xFF78716C)),
-              onPressed: _load),
-          IconButton(icon: const Icon(Icons.logout_rounded, color: Color(0xFF78716C)),
-              onPressed: _signOut),
+          IconButton(icon: const Icon(Icons.refresh_rounded),
+              color: AppColors.textSecondary, onPressed: _load),
         ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(100),
+          child: Column(children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: TextField(
+                onChanged: (v) => setState(() { _search = v; _applyFilter(); }),
+                decoration: InputDecoration(
+                  hintText: 'Buscar evaluación...',
+                  prefixIcon: const Icon(Icons.search_rounded,
+                      color: AppColors.textHint, size: 20),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                  fillColor: AppColors.background,
+                ),
+              ),
+            ),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              child: Row(children: [
+                _FilterChip('Todas', 'all', _filter, (v) => setState(() { _filter = v; _applyFilter(); })),
+                const SizedBox(width: 8),
+                _FilterChip('Activas', 'active', _filter, (v) => setState(() { _filter = v; _applyFilter(); })),
+                const SizedBox(width: 8),
+                _FilterChip('Borradores', 'draft', _filter, (v) => setState(() { _filter = v; _applyFilter(); })),
+              ]),
+            ),
+          ]),
+        ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _errorView()
-              : _assessments.isEmpty
-                  ? _emptyView()
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Text(
-                              '${_assessments.length} evaluaciones activas',
-                              style: const TextStyle(
-                                  fontSize: 13, color: Color(0xFF78716C))),
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : _filtered.isEmpty
+              ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.search_off_rounded, size: 48, color: AppColors.textHint),
+                  const SizedBox(height: 12),
+                  Text(_search.isNotEmpty ? 'Sin resultados para "$_search"' : 'Sin evaluaciones',
+                      style: const TextStyle(color: AppColors.textSecondary)),
+                  TextButton(onPressed: _load, child: const Text('Recargar')),
+                ]))
+              : RefreshIndicator(
+                  onRefresh: _load,
+                  color: AppColors.primary,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: _filtered.length,
+                    itemBuilder: (_, i) {
+                      final a = _filtered[i];
+                      final color = AppTheme.subjectColor(a.subject);
+                      return GestureDetector(
+                        onTap: a.hasStructure
+                            ? () => Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => UploadScreen(assessment: a)))
+                            : () => _showNoStructure(context),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: AppColors.border),
                           ),
-                          ..._assessments.map((a) => _Card(
-                            assessment: a,
-                            onTap: () => Navigator.push(context,
-                                MaterialPageRoute(
-                                    builder: (_) => UploadScreen(assessment: a)))
-                                .then((_) => _load()),
-                          )),
-                        ],
-                      ),
-                    ),
+                          child: Row(children: [
+                            Container(width: 50, height: 50,
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(AppTheme.subjectIcon(a.subject),
+                                  color: color, size: 26)),
+                            const SizedBox(width: 14),
+                            Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(a.title,
+                                  style: const TextStyle(fontSize: 14,
+                                      fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                                  maxLines: 2, overflow: TextOverflow.ellipsis),
+                              const SizedBox(height: 5),
+                              Wrap(spacing: 6, children: [
+                                _Tag(a.subjectLabel, color),
+                                if (a.gradeLevel != null) _Tag(a.gradeLevel!, AppColors.textSecondary),
+                                if (a.totalPoints != null)
+                                  _Tag('${a.totalPoints!.toStringAsFixed(0)} pts', AppColors.textSecondary),
+                                _StatusTag(a.status),
+                              ]),
+                            ])),
+                            const SizedBox(width: 8),
+                            Icon(
+                              a.hasStructure ? Icons.chevron_right_rounded : Icons.warning_amber_rounded,
+                              color: a.hasStructure ? AppColors.textHint : AppColors.warning,
+                            ),
+                          ]),
+                        ),
+                      );
+                    },
+                  ),
+                ),
     );
   }
 
-  Widget _emptyView() => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-    Icon(Icons.assignment_outlined, size: 52, color: Colors.grey[300]),
-    const SizedBox(height: 14),
-    const Text('No hay evaluaciones activas',
-        style: TextStyle(color: Color(0xFF78716C))),
-    TextButton(onPressed: _load, child: const Text('Recargar')),
-  ]));
-
-  Widget _errorView() => Center(child: Padding(
-    padding: const EdgeInsets.all(24),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.error_outline, color: Color(0xFFDC2626), size: 44),
-      const SizedBox(height: 10),
-      Text(_error!, textAlign: TextAlign.center,
-          style: const TextStyle(color: Color(0xFF78716C))),
-      const SizedBox(height: 14),
-      ElevatedButton(onPressed: _load, child: const Text('Reintentar')),
-    ]),
-  ));
+  void _showNoStructure(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Analiza el PDF de esta evaluación desde el panel web primero'),
+      backgroundColor: AppColors.warning,
+      duration: Duration(seconds: 3),
+    ));
+  }
 }
 
-class _Card extends StatelessWidget {
-  final Assessment assessment;
-  final VoidCallback onTap;
-  const _Card({required this.assessment, required this.onTap});
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final String current;
+  final Function(String) onTap;
+  const _FilterChip(this.label, this.value, this.current, this.onTap);
 
   @override
   Widget build(BuildContext context) {
+    final active = current == value;
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
+      onTap: () => onTap(value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE5E5E4), width: 0.5),
+          color: active ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: active ? AppColors.primary : AppColors.border),
         ),
-        child: Row(children: [
-          Container(
-            width: 42, height: 42,
-            decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.description_rounded,
-                color: Color(0xFF3B82F6), size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(assessment.title,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-                maxLines: 2, overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
-            Text(
-              '${assessment.subjectLabel} · ${assessment.gradeLevel ?? '—'} · '
-              '${assessment.totalPoints?.toStringAsFixed(0) ?? '—'} pts',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF78716C)),
-            ),
-          ])),
-          const SizedBox(width: 8),
-          Column(children: [
-            if (!assessment.hasStructure)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF3C7),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text('Sin estructura',
-                    style: TextStyle(fontSize: 10, color: Color(0xFFD97706),
-                        fontWeight: FontWeight.w500)),
-              ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFFA8A29E)),
-          ]),
-        ]),
+        child: Text(label, style: TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w500,
+            color: active ? Colors.white : AppColors.textSecondary)),
       ),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String text; final Color color;
+  const _Tag(this.text, this.color);
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20)),
+    child: Text(text, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w500)),
+  );
+}
+
+class _StatusTag extends StatelessWidget {
+  final String status;
+  const _StatusTag(this.status);
+  @override
+  Widget build(BuildContext context) {
+    final data = <String, (String, Color)>{
+      'active': ('Activa', AppColors.success),
+      'draft': ('Borrador', AppColors.textSecondary),
+      'closed': ('Cerrada', AppColors.primary),
+    }[status] ?? ('—', AppColors.textHint);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: data.$2.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20)),
+      child: Text(data.$1, style: TextStyle(fontSize: 10, color: data.$2, fontWeight: FontWeight.w600)),
     );
   }
 }

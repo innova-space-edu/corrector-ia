@@ -1,10 +1,24 @@
 // lib/services/assessment_service.dart
+// FIX SYNC: queries ALL assessments (active + draft) so web-created evals appear
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/assessment.dart';
 
 class AssessmentService {
   final _sb = Supabase.instance.client;
 
+  // Obtiene TODAS las evaluaciones — sincronizado con el panel web
+  Future<List<Assessment>> getAllAssessments() async {
+    final data = await _sb
+        .from('assessments')
+        .select('id, title, subject, grade_level, total_points, status, official_test_json')
+        .order('created_at', ascending: false);
+
+    return (data as List)
+        .map((j) => Assessment.fromJson(j as Map<String, dynamic>))
+        .toList();
+  }
+
+  // Solo las activas (para la pantalla de subida)
   Future<List<Assessment>> getActiveAssessments() async {
     final data = await _sb
         .from('assessments')
