@@ -4,11 +4,24 @@ import { createAdminClient } from "@/lib/supabase/server"
 
 export const runtime = "nodejs"
 
-/**
- * POST /api/submissions/batch-correct
- * Corrige todos los envíos pendientes de una evaluación en paralelo.
- * Body: { assessmentId: string }
- */
+type PageRow = {
+  id: string
+  submission_id: string
+  student_id: string
+  question_id: string
+  image_path: string
+}
+
+type QuestionInfo = {
+  question_type: string
+  max_points: number
+  statement: string
+  alternatives?: { label: string; text: string }[]
+  correct_answer?: string | null
+}
+
+type ResultRow = { pageId: string; status: "ok" | "error"; error?: string }
+
 export async function POST(req: NextRequest) {
   try {
     const { assessmentId } = await req.json()
@@ -18,7 +31,6 @@ export async function POST(req: NextRequest) {
 
     const supabase = createAdminClient()
 
-    // 1. Obtener estructura y clave de la evaluación
     const { data: assessment } = await supabase
       .from("assessments")
       .select("official_test_json, answer_key_json, subject, passing_percentage")
@@ -30,20 +42,21 @@ export async function POST(req: NextRequest) {
     }
 
     const structure = assessment.official_test_json as {
-      items?: { questions?: { question_id: string; question_type?: string; max_points?: number; statement?: string; alternatives?: { label: string; text: string }[] }[] }[]
+      items?: {
+        questions?: {
+          question_id: string
+          question_type?: string
+          max_points?: number
+          statement?: string
+          alternatives?: { label: string; text: string }[]
+        }[]
+      }[]
     } | null
+
     const answerKey = (assessment.answer_key_json ?? {}) as Record<string, string>
-    const subject = assessment.subject ?? "math"
+    const subject = (assessment.subject ?? "math") as string
 
-    // Mapa de preguntas para acceso rápido
-    const questionMap: Record<string, {
-      question_type: string
-      max_points: number
-      statement: string
-      alternatives?: { label: string; text: string }[]
-      correct_answer?: string
-    }> = {}
-
+    const questionMap: Record<string, QuestionInfo> = {}
     for (const item of structure?.items ?? []) {
       for (const q of item.questions ?? []) {
         questionMap[q.question_id] = {
@@ -56,46 +69,43 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Obtener todas las páginas sin corregir de esta evaluación
-    const { data: pages } = await supabase
+    const { data: rawPages } = await supabase
       .from("submission_pages")
       .select("id, submission_id, student_id, question_id, image_path")
       .eq("assessment_id", assessmentId)
       .eq("ocr_status", "pending")
 
-    if (!pages?.length) {
+    const pages = (rawPages ?? []) as PageRow[]
+
+    if (!pages.length) {
       return NextResponse.json({ ok: true, message: "No hay ejercicios pendientes", corrected: 0 })
     }
 
-    // 3. Corregir en lotes de 5 (evitar saturar el OCR service)
     const BATCH_SIZE = 5
-    const results: { pageId: string; status: "ok" | "error"; error?: string }[] = []
-
+    const results: ResultRow[] = []
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://corrector-ia-beryl.vercel.app"
 
     for (let i = 0; i < pages.length; i += BATCH_SIZE) {
       const batch = pages.slice(i, i + BATCH_SIZE)
 
       await Promise.all(
-        batch.map(async (page) => {
+        batch.map(async (page: PageRow) => {
           try {
             const q = questionMap[page.question_id]
             if (!q) {
-              results.push({ pageId: page.id, status: "error", error: "Pregunta no encontrada en estructura" })
+              results.push({ pageId: page.id, status: "error", error: "Pregunta no en estructura" })
               return
             }
 
-            // Obtener URL firmada de la imagen
             const { data: signed } = await supabase.storage
               .from("submission-images")
               .createSignedUrl(page.image_path, 3600)
 
             if (!signed?.signedUrl) {
-              results.push({ pageId: page.id, status: "error", error: "No se pudo obtener URL de imagen" })
+              results.push({ pageId: page.id, status: "error", error: "Sin URL de imagen" })
               return
             }
 
-            // Llamar al corrector inteligente
             const res = await fetch(`${appUrl}/api/correct/smart`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -117,7 +127,6 @@ export async function POST(req: NextRequest) {
             })
 
             if (res.ok) {
-              // Marcar página como procesada
               await supabase
                 .from("submission_pages")
                 .update({ ocr_status: "done" })
@@ -133,16 +142,12 @@ export async function POST(req: NextRequest) {
         })
       )
 
-      // Pequeña pausa entre lotes para no saturar Gemini (rate limit)
       if (i + BATCH_SIZE < pages.length) {
         await new Promise((r) => setTimeout(r, 1500))
       }
     }
 
-    // 4. Para cada submission procesada, calcular nota final
-    const submissionIds = [...new Set(pages.map((p) => p.submission_id))]
-    const passingPct = assessment.passing_percentage ?? 60
-
+    const submissionIds = [...new Set(pages.map((p: PageRow) => p.submission_id))]
     for (const subId of submissionIds) {
       await fetch(`${appUrl}/api/submissions/finalize`, {
         method: "POST",
@@ -160,7 +165,6 @@ export async function POST(req: NextRequest) {
       corrected: ok,
       errors,
       submissions: submissionIds.length,
-      details: results,
     })
   } catch (e) {
     console.error("[batch-correct]", e)
