@@ -106,7 +106,7 @@ export async function GET(
   detailSheet["!cols"] = [{ wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 15 }]
 
   // ── Hoja 3: Distribución de notas ─────────────────────────────────────────
-  const grades = submissions
+  const grades: number[] = submissions
     .map((s: any) => s.final_grade)
     .filter((g: unknown): g is number => typeof g === "number")
 
