@@ -27,6 +27,10 @@ export function AppShell({
   const router = useRouter()
   const supabase = createClient()
 
+  function goToChangePassword() {
+    router.push("/change-password")
+  }
+
   async function handleLogout() {
     try {
       await supabase.auth.signOut()
@@ -64,6 +68,17 @@ export function AppShell({
               {item.label}
             </Link>
           ))}
+
+          <button
+            type="button"
+            onClick={goToChangePassword}
+            className="group flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-semibold text-slate-600 transition hover:bg-blue-50 hover:text-blue-700"
+          >
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-50 transition group-hover:bg-white">
+              🔐
+            </span>
+            Cambiar contraseña
+          </button>
         </nav>
 
         <div className="absolute bottom-5 left-5 right-5 space-y-3">
@@ -100,6 +115,15 @@ export function AppShell({
 
             <div className="flex items-center gap-2">
               {action}
+
+              <button
+                type="button"
+                onClick={goToChangePassword}
+                className="hidden rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 md:inline-flex"
+              >
+                Cambiar contraseña
+              </button>
+
               <button
                 type="button"
                 onClick={handleLogout}
