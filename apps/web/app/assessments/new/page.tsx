@@ -38,11 +38,24 @@ export default function NewAssessmentPage() {
 
     try {
       // 1. Crear la evaluación en Supabase
-      const { data: assessment, error: createError } = await supabase
-        .from("assessments")
-        .insert({ title, subject, grade_level: gradeLevel, status: "draft" })
-        .select()
-        .single()
+      // Obtener usuario logueado
+const {
+  data: { user },
+} = await supabase.auth.getUser()
+
+if (!user) throw new Error("Usuario no autenticado")
+
+const { data: assessment, error: createError } = await supabase
+  .from("assessments")
+  .insert({
+    title,
+    subject,
+    grade_level: gradeLevel,
+    status: "draft",
+    teacher_id: user.id, // 🔥 CLAVE
+  })
+  .select()
+  .single()
 
       if (createError || !assessment) throw new Error(createError?.message ?? "Error al crear evaluación")
       setAssessmentId(assessment.id)
