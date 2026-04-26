@@ -5,6 +5,16 @@ import { callAI, parseAIJson } from "@/lib/ai/ai-router"
 
 export const runtime = "nodejs"
 
+type ResultRow = {
+  question_id: string
+  score: number | null
+  max_score: number | null
+  errors_detected: string[] | null
+  student_feedback: string | null
+  review_status: string
+  graded_at: string
+}
+
 export async function POST(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -29,15 +39,20 @@ export async function POST(
     return NextResponse.json({ error: "Sin historial de correcciones" }, { status: 404 })
   }
 
-  const allErrors = results.flatMap(r => r.errors_detected ?? [])
+  const typedResults = results as ResultRow[]
+
+  const allErrors = typedResults.flatMap((r) => r.errors_detected ?? [])
   const errorFreq: Record<string, number> = {}
   for (const e of allErrors) errorFreq[e] = (errorFreq[e] ?? 0) + 1
   const topErrors = Object.entries(errorFreq).sort((a, b) => b[1] - a[1]).slice(0, 8)
-  const avgPct = results.reduce((s, r) => s + (r.max_score ? (r.score ?? 0) / r.max_score : 0), 0) / results.length
+
+  const avgPct =
+    typedResults.reduce((s, r) => s + (r.max_score ? (r.score ?? 0) / r.max_score : 0), 0) /
+    typedResults.length
 
   const prompt = `
 Analiza el historial de desempeño del estudiante ${student?.full_name ?? "—"}.
-Total ejercicios: ${results.length}, Promedio: ${Math.round(avgPct * 100)}%
+Total ejercicios: ${typedResults.length}, Promedio: ${Math.round(avgPct * 100)}%
 Errores frecuentes: ${topErrors.map(([e, n]) => `"${e}": ${n}x`).join(", ")}
 
 Responde SOLO JSON (sin backticks):
@@ -56,17 +71,28 @@ Responde SOLO JSON (sin backticks):
     aiMemory = parseAIJson(result.content)
   } catch { /* keep empty */ }
 
-  await supabase.from("student_memory").upsert({
-    student_id: studentId,
-    subject: "all",
-    recurring_errors: aiMemory.recurring_errors ?? topErrors.map(([e]) => e),
-    strong_topics: aiMemory.strong_topics ?? [],
-    weak_topics: aiMemory.weak_topics ?? [],
-    improvement_trend: aiMemory.improvement_trend ?? "estable",
-    last_updated: new Date().toISOString(),
-  }, { onConflict: "student_id,subject" })
+  await supabase.from("student_memory").upsert(
+    {
+      student_id: studentId,
+      subject: "all",
+      recurring_errors: aiMemory.recurring_errors ?? topErrors.map(([e]) => e),
+      strong_topics: aiMemory.strong_topics ?? [],
+      weak_topics: aiMemory.weak_topics ?? [],
+      improvement_trend: aiMemory.improvement_trend ?? "estable",
+      last_updated: new Date().toISOString(),
+    },
+    { onConflict: "student_id,subject" }
+  )
 
-  return NextResponse.json({ ok: true, studentId, studentName: student?.full_name, totalExercises: results.length, avgPercentage: Math.round(avgPct * 100), topErrors, aiMemory })
+  return NextResponse.json({
+    ok: true,
+    studentId,
+    studentName: student?.full_name,
+    totalExercises: typedResults.length,
+    avgPercentage: Math.round(avgPct * 100),
+    topErrors,
+    aiMemory,
+  })
 }
 
 export async function GET(
@@ -75,9 +101,11 @@ export async function GET(
 ) {
   const { id } = await context.params
   const supabase = createAdminClient()
+
   const [{ data: memory }, { data: student }] = await Promise.all([
     supabase.from("student_memory").select("*").eq("student_id", id).single(),
     supabase.from("students").select("full_name").eq("id", id).single(),
   ])
+
   return NextResponse.json({ student, memory })
 }
