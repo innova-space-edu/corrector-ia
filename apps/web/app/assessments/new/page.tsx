@@ -45,6 +45,16 @@ const {
 
 if (!user) throw new Error("Usuario no autenticado")
 
+const { data: teacher, error: teacherError } = await supabase
+  .from("teachers")
+  .select("id")
+  .eq("user_id", user.id)
+  .single()
+
+if (teacherError || !teacher) {
+  throw new Error("No se encontró el perfil docente para este usuario")
+}
+
 const { data: assessment, error: createError } = await supabase
   .from("assessments")
   .insert({
@@ -52,7 +62,7 @@ const { data: assessment, error: createError } = await supabase
     subject,
     grade_level: gradeLevel,
     status: "draft",
-    teacher_id: user.id, // 🔥 CLAVE
+    teacher_id: teacher.id,
   })
   .select()
   .single()
