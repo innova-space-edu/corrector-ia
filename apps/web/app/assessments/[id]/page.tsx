@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import type { Assessment, Submission, ParsedAssessmentStructure } from "@/types/assessment"
 
 type SubmissionWithStudent = Submission & {
-  students: { full_name: string } | null
+  students: { id: string; full_name: string } | null
 }
 
 const GRADE_COLOR = (g?: number) => {
@@ -17,12 +17,9 @@ const GRADE_COLOR = (g?: number) => {
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Pendiente",
-  partial: "Parcial",
-  completed: "Corregido",
-  needs_review: "Revisar",
+  pending: "Pendiente", partial: "Parcial",
+  completed: "Corregido", needs_review: "Revisar",
 }
-
 const STATUS_COLOR: Record<string, string> = {
   pending: "bg-gray-100 text-gray-500",
   partial: "bg-amber-100 text-amber-700",
@@ -39,23 +36,25 @@ export default function AssessmentPage() {
   const [submissions, setSubmissions] = useState<SubmissionWithStudent[]>([])
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<"overview" | "submissions" | "structure">("overview")
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchResult, setBatchResult] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
 
-  useEffect(() => {
-    async function load() {
-      const [{ data: a }, { data: s }] = await Promise.all([
-        supabase.from("assessments").select("*").eq("id", id).single(),
-        supabase
-          .from("submissions")
-          .select("*, students(full_name)")
-          .eq("assessment_id", id)
-          .order("submitted_at", { ascending: false }),
-      ])
-      setAssessment(a)
-      setSubmissions(s ?? [])
-      setLoading(false)
-    }
-    load()
-  }, [id])
+  async function load() {
+    const [{ data: a }, { data: s }] = await Promise.all([
+      supabase.from("assessments").select("*").eq("id", id).single(),
+      supabase
+        .from("submissions")
+        .select("*, students(id, full_name)")
+        .eq("assessment_id", id)
+        .order("submitted_at", { ascending: false }),
+    ])
+    setAssessment(a)
+    setSubmissions(s ?? [])
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [id])
 
   async function toggleStatus() {
     if (!assessment) return
@@ -64,52 +63,66 @@ export default function AssessmentPage() {
     setAssessment({ ...assessment, status: next })
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Cargando...</p>
-      </div>
-    )
+  async function handleBatchCorrect() {
+    setBatchRunning(true)
+    setBatchResult(null)
+    const res = await fetch("/api/submissions/batch-correct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assessmentId: id }),
+    })
+    const json = await res.json()
+    if (json.ok) {
+      setBatchResult(`✓ ${json.corrected} ejercicios corregidos de ${json.total} pendientes`)
+      await load()
+    } else {
+      setBatchResult(`Error: ${json.error}`)
+    }
+    setBatchRunning(false)
   }
 
-  if (!assessment) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-400 text-sm">Evaluación no encontrada.</p>
-      </div>
-    )
+  async function handleExport() {
+    setExporting(true)
+    const res = await fetch(`/api/assessments/${id}/export`)
+    if (res.ok) {
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      const header = res.headers.get("Content-Disposition") ?? ""
+      const match = header.match(/filename="(.+)"/)
+      a.download = match?.[1] ?? "notas.xlsx"
+      a.click()
+      URL.revokeObjectURL(url)
+    }
+    setExporting(false)
   }
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><p className="text-gray-400 text-sm">Cargando...</p></div>
+  if (!assessment) return <div className="min-h-screen flex items-center justify-center"><p className="text-gray-400 text-sm">No encontrado.</p></div>
 
   const structure = assessment.official_test_json as ParsedAssessmentStructure | null
-  const completed = submissions.filter((s) => s.grading_status === "completed").length
-  const toReview = submissions.filter((s) => s.grading_status === "needs_review").length
-  const avgGrade =
-    submissions.length > 0
-      ? (
-          submissions.reduce((s, x) => s + (x.final_grade ?? 0), 0) /
-          submissions.filter((x) => x.final_grade).length || 0
-        ).toFixed(1)
-      : "—"
+  const completed = submissions.filter(s => s.grading_status === "completed").length
+  const toReview = submissions.filter(s => s.grading_status === "needs_review").length
+  const pending = submissions.filter(s => s.grading_status === "pending").length
+  const grades = submissions.map(s => s.final_grade).filter((g): g is number => g != null)
+  const avgGrade = grades.length ? (grades.reduce((a, b) => a + b, 0) / grades.length).toFixed(1) : "—"
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-start justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <a href="/" className="text-gray-400 hover:text-gray-600 text-sm">
-                  ← Inicio
-                </a>
+                <a href="/" className="text-gray-400 hover:text-gray-600 text-sm">← Inicio</a>
               </div>
               <h1 className="text-xl font-semibold text-gray-900">{assessment.title}</h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                {assessment.subject} · {assessment.grade_level ?? "—"} ·{" "}
-                {assessment.total_points ?? "—"} pts
+                {assessment.subject} · {assessment.grade_level ?? "—"} · {assessment.total_points ?? "—"} pts
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               <button
                 onClick={toggleStatus}
                 className={`text-sm px-4 py-2 rounded-lg font-medium transition border ${
@@ -118,32 +131,52 @@ export default function AssessmentPage() {
                     : "bg-green-600 text-white border-transparent hover:bg-green-700"
                 }`}
               >
-                {assessment.status === "active" ? "Cerrar evaluación" : "Activar evaluación"}
+                {assessment.status === "active" ? "Cerrar" : "Activar"}
               </button>
-              <a
-                href={`/assessments/${id}/upload`}
-                className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition"
+              <a href={`/assessments/${id}/answer-key`} className="text-sm border border-gray-200 px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-50 transition">
+                Clave
+              </a>
+              <a href={`/assessments/${id}/upload`} className="text-sm border border-gray-200 px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-50 transition">
+                + Subir
+              </a>
+              <button
+                onClick={handleBatchCorrect}
+                disabled={batchRunning || pending === 0}
+                className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition disabled:opacity-50"
               >
-                + Subir ejercicios
+                {batchRunning ? "Corrigiendo..." : `Corregir todo${pending > 0 ? ` (${pending})` : ""}`}
+              </button>
+              <button
+                onClick={handleExport}
+                disabled={exporting || submissions.length === 0}
+                className="text-sm bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 transition disabled:opacity-50"
+              >
+                {exporting ? "Exportando..." : "⬇ Excel"}
+              </button>
+              <a href={`/assessments/${id}/insights`} className="text-sm border border-gray-200 px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-50 transition">
+                Analítica
               </a>
             </div>
           </div>
+          {batchResult && (
+            <div className={`mt-3 text-sm px-4 py-2 rounded-lg ${batchResult.startsWith("✓") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+              {batchResult}
+            </div>
+          )}
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-6">
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-5 gap-3 mb-6">
           {[
             { label: "Envíos", value: submissions.length },
             { label: "Corregidos", value: completed },
             { label: "Para revisar", value: toReview },
+            { label: "Pendientes", value: pending },
             { label: "Promedio", value: avgGrade },
-          ].map((s) => (
-            <div
-              key={s.label}
-              className="bg-white rounded-xl border border-gray-200 p-4 text-center"
-            >
+          ].map(s => (
+            <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4 text-center">
               <p className="text-2xl font-bold text-gray-900">{s.value}</p>
               <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
             </div>
@@ -152,16 +185,9 @@ export default function AssessmentPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-200 mb-6">
-          {(["overview", "submissions", "structure"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`text-sm px-4 py-2 font-medium border-b-2 transition -mb-px ${
-                tab === t
-                  ? "border-blue-600 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
+          {(["overview", "submissions", "structure"] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`text-sm px-4 py-2 font-medium border-b-2 -mb-px transition ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:text-gray-700"}`}>
               {{ overview: "Resumen", submissions: "Envíos", structure: "Estructura" }[t]}
             </button>
           ))}
@@ -190,8 +216,7 @@ export default function AssessmentPage() {
             </div>
             {!structure && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-                No se ha analizado el PDF de esta evaluación aún. La subida guiada de
-                ejercicios requiere la estructura detectada.
+                No se ha analizado el PDF aún. La corrección guiada requiere estructura detectada.
               </div>
             )}
           </div>
@@ -203,10 +228,7 @@ export default function AssessmentPage() {
             {submissions.length === 0 ? (
               <div className="px-6 py-12 text-center text-gray-400">
                 <p>No hay envíos aún.</p>
-                <a
-                  href={`/assessments/${id}/upload`}
-                  className="text-blue-600 hover:underline mt-2 block"
-                >
+                <a href={`/assessments/${id}/upload`} className="text-blue-600 hover:underline mt-2 block">
                   Subir ejercicios →
                 </a>
               </div>
@@ -221,26 +243,25 @@ export default function AssessmentPage() {
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {submissions.map((s) => (
+                <tbody className="divide-y divide-gray-50">
+                  {submissions.map(s => (
                     <tr key={s.id} className="hover:bg-gray-50">
-                      <td className="px-5 py-3 font-medium text-gray-900">
-                        {s.students?.full_name ?? "—"}
+                      <td className="px-5 py-3">
+                        <a
+                          href={`/students/${s.students?.id ?? s.student_id}`}
+                          className="font-medium text-gray-900 hover:text-blue-600 hover:underline"
+                        >
+                          {s.students?.full_name ?? "—"}
+                        </a>
                       </td>
                       <td className="px-4 py-3 text-center text-gray-700">
-                        {s.total_score != null
-                          ? `${s.total_score}/${s.max_score}`
-                          : "—"}
+                        {s.total_score != null ? `${s.total_score}/${s.max_score}` : "—"}
                       </td>
                       <td className={`px-4 py-3 text-center font-bold ${GRADE_COLOR(s.final_grade ?? undefined)}`}>
                         {s.final_grade ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span
-                          className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                            STATUS_COLOR[s.grading_status] ?? "bg-gray-100 text-gray-500"
-                          }`}
-                        >
+                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${STATUS_COLOR[s.grading_status] ?? "bg-gray-100 text-gray-500"}`}>
                           {STATUS_LABEL[s.grading_status] ?? s.grading_status}
                         </span>
                       </td>
@@ -264,48 +285,29 @@ export default function AssessmentPage() {
             {!structure ? (
               <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
                 <p>No hay estructura detectada.</p>
-                <p className="text-sm mt-1">
-                  Ve a{" "}
-                  <a href="/assessments/new" className="text-blue-600 hover:underline">
-                    Nueva evaluación
-                  </a>{" "}
-                  y sube el PDF oficial para analizarlo.
-                </p>
               </div>
             ) : (
               <>
                 <div className="bg-white rounded-xl border border-gray-200 p-5">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium text-gray-900">
-                      {structure.assessment_title ?? assessment.title}
-                    </p>
-                    <span className="text-sm text-gray-500">
-                      {structure.total_points ?? assessment.total_points} pts totales
-                    </span>
+                    <p className="font-medium text-gray-900">{structure.assessment_title ?? assessment.title}</p>
+                    <span className="text-sm text-gray-500">{structure.total_points ?? assessment.total_points} pts totales</span>
                   </div>
                 </div>
-                {structure.items?.map((item) => (
-                  <div
-                    key={item.item_id}
-                    className="bg-white rounded-xl border border-gray-200 p-5"
-                  >
+                {structure.items?.map(item => (
+                  <div key={item.item_id} className="bg-white rounded-xl border border-gray-200 p-5">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-medium text-gray-900">{item.label}</h3>
                       {item.points_rule && (
-                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                          {item.points_rule}
-                        </span>
+                        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{item.points_rule}</span>
                       )}
                     </div>
                     <div className="space-y-2">
                       {item.questions.map((q, i) => (
-                        <div
-                          key={q.question_id}
-                          className="flex gap-3 text-sm text-gray-700 pl-2"
-                        >
+                        <div key={q.question_id} className="flex gap-3 text-sm text-gray-700 pl-2">
                           <span className="text-gray-400 min-w-[20px]">{i + 1}.</span>
                           <span className="flex-1">{q.statement || "Sin enunciado"}</span>
-                          <span className="text-gray-400">{q.max_points} pts</span>
+                          <span className="text-gray-400 flex-shrink-0">{q.max_points} pts</span>
                         </div>
                       ))}
                     </div>
