@@ -6,27 +6,25 @@ export const runtime = "nodejs"
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params
   const supabase = createAdminClient()
 
   // Incrementar contador de descargas
-  await supabase.rpc("increment_download_count", { exam_id: params.id }).catch(() => {
-    // Fallback si no existe la función RPC
-    supabase
-      .from("library_exams")
-      .update({ download_count: supabase.rpc as any })
-      .eq("id", params.id)
-  })
-
-  // Obtener URL del PDF
   const { data: exam } = await supabase
     .from("library_exams")
-    .select("pdf_path, title")
-    .eq("id", params.id)
+    .select("pdf_path, title, download_count")
+    .eq("id", id)
     .single()
 
   if (!exam) return NextResponse.json({ error: "No encontrado" }, { status: 404 })
+
+  // Incrementar contador
+  await supabase
+    .from("library_exams")
+    .update({ download_count: (exam.download_count ?? 0) + 1 })
+    .eq("id", id)
 
   const { data } = await supabase.storage
     .from("library-pdfs")
