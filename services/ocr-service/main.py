@@ -1,6 +1,6 @@
 """
-Microservicio OCR para el Corrector IA
-PaddleOCR principal + orquestador LangGraph
+Microservicio OCR — Corrector IA
+Cascade: Gemini Vision → PaddleOCR → Surya → Chandra
 """
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
@@ -12,11 +12,14 @@ import time
 
 from services.image_preprocess import preprocess_image
 from services.quality_check import check_image_quality
-from services.extract_ocr import extract_with_paddle
+from services.extract_ocr import (
+    extract_with_gemini_vision,
+    extract_with_paddle,
+    extract_with_surya,
+    extract_with_chandra,
+)
 from services.parse_math_steps import parse_math_response
 from services.merge_confidence import merge_and_score
-
-# Importar el router del orquestador
 from orchestrate_endpoint import router as orchestrate_router
 
 logging.basicConfig(level=logging.INFO)
@@ -24,8 +27,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Corrector IA — OCR Service",
-    description="Microservicio OCR para exámenes manuscritos",
-    version="1.1.0"
+    description="Gemini Vision + PaddleOCR para exámenes manuscritos",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -36,7 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Incluir router del orquestador ──────────────────────────────────────────
 app.include_router(orchestrate_router)
 
 
@@ -60,21 +62,29 @@ class HealthResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Verifica qué proveedores OCR están disponibles."""
+    import os
     providers: dict[str, bool] = {}
 
+    # Gemini Vision
+    providers["gemini_vision"] = bool(
+        os.getenv("GOOGLE_AI_API_KEY") or os.getenv("AI_PROVIDER_API_KEY")
+    )
+
+    # Surya
     try:
         from surya.ocr import run_ocr  # type: ignore
         providers["surya"] = True
     except ImportError:
         providers["surya"] = False
 
+    # Chandra
     try:
         import chandra_ocr  # type: ignore
         providers["chandra"] = True
     except ImportError:
         providers["chandra"] = False
 
+    # PaddleOCR
     try:
         from paddleocr import PaddleOCR  # type: ignore
         providers["paddleocr"] = True
@@ -93,31 +103,25 @@ async def process_image(
     file: UploadFile = File(...),
     subject: str = "math",
     question_id: Optional[str] = None,
+    force_provider: Optional[str] = None,
 ):
-    """
-    Endpoint OCR directo.
-    Recibe imagen → extrae texto → parsea pasos → devuelve JSON.
-    """
     start_time = time.time()
     warnings: list[str] = []
 
     if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Se esperaba imagen, recibido: {file.content_type}"
-        )
+        raise HTTPException(400, f"Se esperaba imagen, recibido: {file.content_type}")
 
     raw_bytes = await file.read()
     if len(raw_bytes) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Imagen demasiado grande (máx 10MB)")
+        raise HTTPException(400, "Imagen demasiado grande (máx 10MB)")
 
     logger.info(f"[OCR] {file.filename} | subject={subject} | q={question_id}")
 
     # 1. Preprocesar
-    processed_image, preprocess_meta = preprocess_image(raw_bytes)
-    if preprocess_meta.get("was_rotated"):
+    processed_image, meta = preprocess_image(raw_bytes)
+    if meta.get("was_rotated"):
         warnings.append("Imagen rotada automáticamente")
-    if preprocess_meta.get("low_contrast"):
+    if meta.get("low_contrast"):
         warnings.append("Contraste bajo — se aplicó mejora")
 
     # 2. Calidad
@@ -125,37 +129,31 @@ async def process_image(
     if quality_score < 0.3:
         warnings.append(f"Calidad baja ({quality_score:.0%})")
 
-    # 3. OCR — cascade de proveedores
+    # 3. Cascade de proveedores
+    # Gemini Vision va PRIMERO para manuscritos (maneja garabatos mucho mejor)
+    providers_to_try = _get_provider_order(force_provider, subject, quality_score)
+
     ocr_result = None
     provider_used = "none"
 
-    providers_to_try = _get_provider_order(subject, quality_score)
-
     for provider in providers_to_try:
         try:
-            if provider == "surya":
-                from services.extract_ocr import extract_with_surya
-                ocr_result = extract_with_surya(processed_image, subject=subject)
-            elif provider == "chandra":
-                from services.extract_ocr import extract_with_chandra
-                ocr_result = extract_with_chandra(processed_image)
-            elif provider == "paddle":
-                ocr_result = extract_with_paddle(processed_image)
+            logger.info(f"[OCR] Intentando: {provider}")
+            result = _run_provider(provider, processed_image, subject)
 
-            if ocr_result and ocr_result.get("confidence", 0) > 0.15:
+            if result and result.get("confidence", 0) > 0.10:
+                ocr_result = result
                 provider_used = provider
+                logger.info(f"[OCR] OK con {provider} | conf={result['confidence']:.2f}")
                 break
             else:
-                warnings.append(f"{provider}: confianza baja")
+                warnings.append(f"{provider}: confianza baja, siguiente...")
         except Exception as e:
             logger.warning(f"[OCR] {provider} falló: {e}")
             warnings.append(f"{provider} no disponible")
 
     if not ocr_result:
-        raise HTTPException(
-            status_code=503,
-            detail="Todos los proveedores OCR fallaron."
-        )
+        raise HTTPException(503, "Todos los proveedores OCR fallaron.")
 
     # 4. Parsear pasos matemáticos
     math_steps: list[str] = []
@@ -172,6 +170,7 @@ async def process_image(
     )
 
     elapsed_ms = int((time.time() - start_time) * 1000)
+    logger.info(f"[OCR] {elapsed_ms}ms | conf={final_confidence:.2f} | {provider_used}")
 
     return OCRResponse(
         success=True,
@@ -186,23 +185,45 @@ async def process_image(
     )
 
 
-def _get_provider_order(subject: str, quality: float) -> list[str]:
-    """Orden dinámico según contexto."""
-    # Intentar importar Surya primero si está disponible
+def _run_provider(provider: str, image, subject: str) -> dict:
+    if provider == "gemini_vision":
+        return extract_with_gemini_vision(image, subject)
+    if provider == "paddleocr":
+        return extract_with_paddle(image)
+    if provider == "surya":
+        return extract_with_surya(image, subject)
+    if provider == "chandra":
+        return extract_with_chandra(image)
+    return {"text": "", "confidence": 0.0}
+
+
+def _get_provider_order(force: Optional[str], subject: str, quality: float) -> list[str]:
+    """
+    Gemini Vision siempre primero para manuscripts.
+    PaddleOCR como fallback estable.
+    """
+    if force:
+        return [force]
+
+    import os
+    has_gemini = bool(os.getenv("GOOGLE_AI_API_KEY") or os.getenv("AI_PROVIDER_API_KEY"))
+
+    order = []
+    if has_gemini:
+        order.append("gemini_vision")
+
+    # Surya/Chandra si están disponibles (servidor paid)
     try:
         from surya.ocr import run_ocr  # type: ignore
-        if subject == "math" and quality >= 0.5:
-            return ["surya", "paddle"]
-        if quality < 0.4:
-            return ["paddle", "surya"]
-        return ["surya", "paddle"]
+        order.append("surya")
     except ImportError:
         pass
 
     try:
         import chandra_ocr  # type: ignore
-        return ["chandra", "paddle"]
+        order.append("chandra")
     except ImportError:
         pass
 
-    return ["paddle"]
+    order.append("paddleocr")
+    return order
