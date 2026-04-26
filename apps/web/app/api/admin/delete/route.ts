@@ -9,7 +9,6 @@ export async function DELETE(req: NextRequest) {
 
   const supabase = createAdminClient()
 
-  // Verificar que el usuario tiene permisos (es el dueño O es admin)
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "No autenticado" }, { status: 401 })
 
@@ -24,7 +23,6 @@ export async function DELETE(req: NextRequest) {
   const isAdmin = ["admin", "superadmin"].includes(teacher.role ?? "")
 
   if (resource === "assessment") {
-    // Verificar dueño
     const { data: assessment } = await supabase
       .from("assessments")
       .select("id, teacher_id, official_pdf_path")
@@ -36,12 +34,10 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: "Sin permisos" }, { status: 403 })
     }
 
-    // Eliminar PDF del storage
     if (assessment.official_pdf_path) {
       await supabase.storage.from("assessment-assets").remove([assessment.official_pdf_path])
     }
 
-    // Eliminar imágenes de submissions
     const { data: submissions } = await supabase
       .from("submissions")
       .select("id")
@@ -55,7 +51,9 @@ export async function DELETE(req: NextRequest) {
           .eq("submission_id", sub.id)
 
         if (pages?.length) {
-          const paths = pages.map(p => p.image_path).filter(Boolean)
+          const paths = pages
+            .map((p: { image_path: string }) => p.image_path)
+            .filter(Boolean)
           if (paths.length) {
             await supabase.storage.from("submission-images").remove(paths)
           }
@@ -63,7 +61,6 @@ export async function DELETE(req: NextRequest) {
       }
     }
 
-    // Eliminar en cascada (submissions, grading_results, etc. por FK ON DELETE CASCADE)
     const { error } = await supabase.from("assessments").delete().eq("id", id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ ok: true, deleted: "assessment" })
