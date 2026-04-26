@@ -47,15 +47,30 @@ export default function DashboardPage() {
   }, [])
 
   async function handleDelete(id: string, title: string) {
-    if (!confirm(`¿Eliminar "${title}"? Se borrarán todos los envíos y resultados. Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar "${title}"? Se borrarán todos los envíos, resultados e imágenes asociadas. Esta acción no se puede deshacer.`)) return
+
     setDeleting(id)
-    await fetch("/api/admin/delete", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ resource: "assessment", id }),
-    })
-    setAssessments(prev => prev.filter(a => a.id !== id))
-    setDeleting(null)
+
+    try {
+      const res = await fetch("/api/admin/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resource: "assessment", id }),
+      })
+
+      const data = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        throw new Error(data?.error ?? "No se pudo eliminar la evaluación")
+      }
+
+      setAssessments(prev => prev.filter(a => a.id !== id))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error al eliminar la evaluación"
+      alert(message)
+    } finally {
+      setDeleting(null)
+    }
   }
 
   const activas   = assessments.filter(a => a.status === "active").length
