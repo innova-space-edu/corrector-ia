@@ -47,13 +47,11 @@ if (!user) throw new Error("Usuario no autenticado")
 
 const { data: teacher, error: teacherError } = await supabase
   .from("teachers")
-  .select("id")
+  .select("id, role")
   .eq("user_id", user.id)
   .single()
 
-if (teacherError || !teacher) {
-  throw new Error("No se encontró el perfil docente para este usuario")
-}
+if (teacherError || !teacher) throw new Error("Tu usuario no está vinculado a teachers")
 
 const { data: assessment, error: createError } = await supabase
   .from("assessments")
@@ -102,8 +100,51 @@ const { data: assessment, error: createError } = await supabase
 
   async function handleConfirm() {
     if (!assessmentId) return
-    // Activar la evaluación
-    await supabase.from("assessments").update({ status: "active" }).eq("id", assessmentId)
+
+    const { error: updateError } = await supabase
+      .from("assessments")
+      .update({ status: "active" })
+      .eq("id", assessmentId)
+
+    if (updateError) {
+      setError(updateError.message)
+      return
+    }
+
+    try {
+      const { data: currentAssessment } = await supabase
+        .from("assessments")
+        .select("title, subject, grade_level, official_pdf_path, official_test_json, assessment_structure_json, total_points")
+        .eq("id", assessmentId)
+        .single()
+
+      const pdfPath = currentAssessment?.official_pdf_path
+
+      if (currentAssessment && pdfPath) {
+        await fetch("/api/library", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: currentAssessment.title,
+            subject: currentAssessment.subject,
+            grade_level: currentAssessment.grade_level || gradeLevel || "Sin nivel",
+            description: "Evaluación compartida automáticamente desde Corrector IA",
+            pdf_path: pdfPath,
+            assessment_structure:
+              currentAssessment.official_test_json ??
+              currentAssessment.assessment_structure_json ??
+              parsed ??
+              null,
+            total_points: currentAssessment.total_points ?? parsed?.total_points ?? null,
+            tags: [currentAssessment.subject, currentAssessment.grade_level || gradeLevel].filter(Boolean),
+            school_name: null,
+          }),
+        })
+      }
+    } catch (libraryError) {
+      console.warn("No se pudo compartir automáticamente en biblioteca", libraryError)
+    }
+
     window.location.href = `/assessments/${assessmentId}`
   }
 
