@@ -48,7 +48,7 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: "Evaluación no encontrada" }, { status: 404 })
       }
 
-      if (assessment.teacher_id !== teacher.id && !isAdmin) {
+      if (assessment.teacher_id !== teacher.id && assessment.teacher_id !== user.id && !isAdmin) {
         return NextResponse.json({ error: "Sin permisos para eliminar esta evaluación" }, { status: 403 })
       }
 
@@ -137,7 +137,7 @@ export async function DELETE(req: NextRequest) {
         return NextResponse.json({ error: "Envío no encontrado" }, { status: 404 })
       }
 
-      if (submission.teacher_id !== teacher.id && !isAdmin) {
+      if (submission.teacher_id !== teacher.id && submission.teacher_id !== user.id && !isAdmin) {
         return NextResponse.json({ error: "Sin permisos para eliminar este envío" }, { status: 403 })
       }
 
