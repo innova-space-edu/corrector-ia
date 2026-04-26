@@ -1,4 +1,8 @@
+"use client"
+
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
 const navItems = [
   { href: "/", icon: "🏠", label: "Inicio" },
@@ -14,7 +18,26 @@ type AppShellProps = {
   action?: React.ReactNode
 }
 
-export function AppShell({ children, title = "Panel docente", subtitle, action }: AppShellProps) {
+export function AppShell({
+  children,
+  title = "Panel docente",
+  subtitle,
+  action,
+}: AppShellProps) {
+  const router = useRouter()
+  const supabase = createClient()
+
+  async function handleLogout() {
+    try {
+      await supabase.auth.signOut()
+      router.replace("/login")
+      router.refresh()
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error)
+      window.location.href = "/login"
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#dbeafe_0,#f8fbff_34%,#ffffff_70%)] text-slate-900">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-blue-100 bg-white/90 p-5 shadow-xl shadow-blue-100/40 backdrop-blur lg:block">
@@ -43,11 +66,22 @@ export function AppShell({ children, title = "Panel docente", subtitle, action }
           ))}
         </nav>
 
-        <div className="absolute bottom-5 left-5 right-5 rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-600 to-cyan-500 p-4 text-white shadow-lg shadow-blue-200">
-          <p className="text-sm font-bold">Corrección inteligente</p>
-          <p className="mt-1 text-xs text-blue-50">
-            OCR + IA + retroalimentación para ahorrar tiempo docente.
-          </p>
+        <div className="absolute bottom-5 left-5 right-5 space-y-3">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-black text-red-600 shadow-sm transition hover:bg-red-100"
+          >
+            <span>🚪</span>
+            Cerrar sesión
+          </button>
+
+          <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-600 to-cyan-500 p-4 text-white shadow-lg shadow-blue-200">
+            <p className="text-sm font-bold">Corrección inteligente</p>
+            <p className="mt-1 text-xs text-blue-50">
+              OCR + IA + retroalimentación para ahorrar tiempo docente.
+            </p>
+          </div>
         </div>
       </aside>
 
@@ -58,10 +92,22 @@ export function AppShell({ children, title = "Panel docente", subtitle, action }
               <div className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-blue-500">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" /> Plataforma activa
               </div>
-              <h1 className="text-xl font-black tracking-tight text-slate-950 md:text-2xl">{title}</h1>
+              <h1 className="text-xl font-black tracking-tight text-slate-950 md:text-2xl">
+                {title}
+              </h1>
               {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
             </div>
-            {action}
+
+            <div className="flex items-center gap-2">
+              {action}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl border border-red-100 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 shadow-sm transition hover:bg-red-100"
+              >
+                Salir
+              </button>
+            </div>
           </div>
         </header>
 
