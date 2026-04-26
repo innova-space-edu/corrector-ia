@@ -47,8 +47,7 @@ export default function DashboardPage() {
   }, [])
 
   async function handleDelete(id: string, title: string) {
-    if (!confirm(`¿Eliminar "${title}"? Se borrarán todos los envíos, resultados e imágenes asociadas. Esta acción no se puede deshacer.`)) return
-
+    if (!confirm(`¿Eliminar "${title}"? Se borrarán todos los envíos y resultados. Esta acción no se puede deshacer.`)) return
     setDeleting(id)
 
     try {
@@ -57,17 +56,14 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ resource: "assessment", id }),
       })
-
-      const data = await res.json().catch(() => null)
+      const json = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        throw new Error(data?.error ?? "No se pudo eliminar la evaluación")
+        alert(json.error ?? "No se pudo eliminar")
+        return
       }
 
       setAssessments(prev => prev.filter(a => a.id !== id))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al eliminar la evaluación"
-      alert(message)
     } finally {
       setDeleting(null)
     }
@@ -127,12 +123,13 @@ export default function DashboardPage() {
             >
               Crear evaluación
             </Link>
-            <Link
-              href="#evaluaciones"
+            <button
+              type="button"
+              onClick={() => document.getElementById("evaluaciones")?.scrollIntoView({ behavior: "smooth", block: "start" })}
               className="rounded-2xl border border-blue-200 px-6 py-3 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
             >
               Ver evaluaciones
-            </Link>
+            </button>
           </div>
         </div>
 
@@ -170,7 +167,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="mb-6 grid grid-cols-4 gap-4" id="evaluaciones">
+      <div className="mb-6 grid grid-cols-4 gap-4 scroll-mt-28" id="evaluaciones">
         {[
           { label: "Activas", value: activas, color: "text-emerald-600", bg: "bg-emerald-50" },
           { label: "Borradores", value: borradores, color: "text-slate-600", bg: "bg-slate-50" },
@@ -182,6 +179,30 @@ export default function DashboardPage() {
             <p className="mt-0.5 text-sm font-medium text-slate-500">{s.label}</p>
           </div>
         ))}
+      </div>
+
+      <div id="analitica" className="mb-6 rounded-3xl border border-blue-100 bg-white p-6 shadow-sm scroll-mt-28">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="font-bold text-slate-800">Analítica rápida</h3>
+            <p className="text-sm text-slate-400">Resumen actualizado de tus evaluaciones visibles.</p>
+          </div>
+          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Tiempo real</span>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Evaluaciones activas</p>
+            <p className="mt-2 text-2xl font-black text-emerald-600">{activas}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Pendientes/borradores</p>
+            <p className="mt-2 text-2xl font-black text-slate-700">{borradores}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Total creadas</p>
+            <p className="mt-2 text-2xl font-black text-violet-600">{assessments.length}</p>
+          </div>
+        </div>
       </div>
 
       {/* Tabla de evaluaciones */}
