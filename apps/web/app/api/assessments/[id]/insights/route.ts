@@ -5,6 +5,23 @@ import { callAI } from "@/lib/ai/ai-router"
 
 export const runtime = "nodejs"
 
+type SubmissionRow = {
+  final_grade: number | null
+  total_score: number | null
+  max_score: number | null
+  percentage: number | null
+  grading_status: string
+}
+
+type ResultRow = {
+  question_id: string
+  score: number | null
+  max_score: number | null
+  errors_detected: string[] | null
+  ocr_confidence: number | null
+  review_status: string
+}
+
 export async function POST(
   _req: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -32,13 +49,16 @@ export async function POST(
     return NextResponse.json({ error: "No hay datos suficientes para generar insights" }, { status: 422 })
   }
 
-  const graded = submissions.filter((s) => s.final_grade !== null)
+  const typedSubmissions = submissions as SubmissionRow[]
+  const typedResults = results as ResultRow[]
+
+  const graded = typedSubmissions.filter((s) => s.final_grade !== null)
   const grades = graded.map((s) => s.final_grade ?? 0)
   const avgGrade = grades.reduce((a, b) => a + b, 0) / (grades.length || 1)
   const passRate = (grades.filter((g) => g >= 4).length / (grades.length || 1)) * 100
 
   const byQuestion: Record<string, { scores: number[]; errors: string[] }> = {}
-  for (const r of results) {
+  for (const r of typedResults) {
     if (!byQuestion[r.question_id]) byQuestion[r.question_id] = { scores: [], errors: [] }
     if (r.score != null) byQuestion[r.question_id].scores.push(r.score / (r.max_score || 1))
     if (r.errors_detected) byQuestion[r.question_id].errors.push(...r.errors_detected)
@@ -57,7 +77,7 @@ export async function POST(
     .sort((a, b) => (a.avg_pct ?? 100) - (b.avg_pct ?? 100))
     .slice(0, 3)
 
-  const allErrors = results.flatMap((r) => r.errors_detected ?? [])
+  const allErrors = typedResults.flatMap((r) => r.errors_detected ?? [])
   const errorFreq: Record<string, number> = {}
   for (const e of allErrors) errorFreq[e] = (errorFreq[e] ?? 0) + 1
   const commonErrors = Object.entries(errorFreq)
@@ -72,16 +92,16 @@ Evaluación: ${assessment?.title} (${assessment?.subject}, ${assessment?.grade_l
 Estudiantes: ${graded.length}
 Promedio: ${avgGrade.toFixed(1)} (escala 1-7)
 Aprobación: ${passRate.toFixed(0)}%
-Preguntas más difíciles: ${hardest.map(q => `${q.question_id}: ${q.avg_pct}%`).join(", ")}
-Errores frecuentes: ${commonErrors.map(e => `"${e.error}" (${e.count}x)`).join(", ")}
+Preguntas más difíciles: ${hardest.map((q) => `${q.question_id}: ${q.avg_pct}%`).join(", ")}
+Errores frecuentes: ${commonErrors.map((e) => `"${e.error}" (${e.count}x)`).join(", ")}
 
 Responde SOLO JSON (sin backticks):
 {
   "resumen": "2-3 oraciones sobre el desempeño general",
-  "fortalezas": ["fortaleza 1", "fortaleza 2"],
-  "debilidades": ["debilidad 1", "debilidad 2"],
-  "temas_reforzar": ["tema 1", "tema 2", "tema 3"],
-  "sugerencia_clase": "sugerencia concreta de actividad para reforzar",
+  "fortalezas": ["fortaleza 1"],
+  "debilidades": ["debilidad 1"],
+  "temas_reforzar": ["tema 1", "tema 2"],
+  "sugerencia_clase": "sugerencia concreta",
   "estudiantes_riesgo_pct": 30
 }
 `
@@ -98,7 +118,7 @@ Responde SOLO JSON (sin backticks):
 
   const insightData = {
     assessment_id: assessmentId,
-    total_students: submissions.length,
+    total_students: typedSubmissions.length,
     graded_count: graded.length,
     avg_grade: Math.round(avgGrade * 10) / 10,
     pass_rate: Math.round(passRate * 10) / 10,
@@ -117,6 +137,8 @@ Responde SOLO JSON (sin backticks):
   return NextResponse.json({
     ok: true,
     stats: { avgGrade: insightData.avg_grade, passRate: insightData.pass_rate, graded: graded.length },
-    hardest, commonErrors, aiAnalysis,
+    hardest,
+    commonErrors,
+    aiAnalysis,
   })
 }
