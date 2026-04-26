@@ -105,7 +105,9 @@ function enrichParsedAssessment(
 
   const enrichedItems = parsed.items.map((item) => {
     const itemLabel = item.label ?? ""
-    const detectedItemType = detectQuestionType(itemLabel, "")
+    const rawItemType = detectQuestionType(itemLabel, "")
+    const detectedItemType: "multiple_choice" | "true_false" | "development" | "mixed" | undefined =
+      (rawItemType === "fill_blank" || rawItemType === "matching") ? "mixed" : rawItemType
 
     const questions: ParsedAssessmentQuestion[] = item.questions.map((q) => {
       const detected = extractOptionsFromStatement(q.statement)
