@@ -2,22 +2,19 @@
 
 import { callAI, parseAIJson } from "@/lib/ai/ai-router"
 import { buildAssessmentParserPrompt } from "@/lib/ai/parse-assessment-prompt"
-import type { ParsedAssessmentStructure } from "@/types/assessment"
+import type { ParsedAssessmentStructure, ParsedAssessmentQuestion } from "@/types/assessment"
 
-type ParsedQuestionExtended = {
-  question_id: string
-  statement: string
-  max_points: number
-  topic?: string
+type ParsedQuestionExtended = ParsedAssessmentQuestion & {
   options?: string[]
-  correct_answer?: string | null
   answer_type?: "multiple_choice" | "true_false" | "development" | "unknown"
 }
 
 type ParsedItemExtended = {
   item_id: string
   label: string
+  item_type?: string
   points_rule?: string
+  instructions?: string
   questions: ParsedQuestionExtended[]
 }
 
@@ -33,7 +30,10 @@ function normalizeText(text: string): string {
     .trim()
 }
 
-function detectAnswerType(itemLabel: string, questionText: string): ParsedQuestionExtended["answer_type"] {
+function detectQuestionType(
+  itemLabel: string,
+  questionText: string
+): ParsedAssessmentQuestion["question_type"] {
   const text = `${itemLabel} ${questionText}`.toLowerCase()
 
   if (
@@ -63,26 +63,27 @@ function detectAnswerType(itemLabel: string, questionText: string): ParsedQuesti
     return "development"
   }
 
-  return "unknown"
+  return "development"
 }
 
 function extractOptionsFromStatement(statement: string): {
   cleanStatement: string
   options: string[]
+  alternatives: { label: string; text: string }[]
 } {
   const text = statement.replace(/\r/g, "\n")
-
-  const optionRegex = /(^|\n)\s*([a-eA-E])[\)\.]?\s+([\s\S]*?)(?=(\n\s*[a-eA-E][\)\.]?\s+)|$)/g
+  const optionRegex = /(^|\n)\s*([a-eA-E])[\)\.]\s+([\s\S]*?)(?=(\n\s*[a-eA-E][\)\.]\s+)|$)/g
 
   const options: string[] = []
+  const alternatives: { label: string; text: string }[] = []
   let match: RegExpExecArray | null
 
   while ((match = optionRegex.exec(text)) !== null) {
     const letter = match[2].toLowerCase()
     const content = match[3].replace(/\n+/g, " ").trim()
-
     if (content.length > 0) {
       options.push(`${letter}) ${content}`)
+      alternatives.push({ label: letter, text: content })
     }
   }
 
@@ -91,58 +92,62 @@ function extractOptionsFromStatement(statement: string): {
     .replace(/\n{2,}/g, "\n")
     .trim()
 
-  if (options.length === 0) {
-    cleanStatement = statement.trim()
-  }
+  if (options.length === 0) cleanStatement = statement.trim()
 
-  return { cleanStatement, options }
+  return { cleanStatement, options, alternatives }
 }
 
 function enrichParsedAssessment(
   parsed: ParsedAssessmentStructure,
   pdfText: string
-): ParsedAssessmentExtended {
+): ParsedAssessmentStructure {
   const normalizedPdf = normalizeText(pdfText)
 
-  const extended = parsed as ParsedAssessmentExtended
-
-  extended.items = extended.items.map((item) => {
+  const enrichedItems = parsed.items.map((item) => {
     const itemLabel = item.label ?? ""
+    const detectedItemType = detectQuestionType(itemLabel, "")
 
-    const questions = item.questions.map((q) => {
+    const questions: ParsedAssessmentQuestion[] = item.questions.map((q) => {
       const detected = extractOptionsFromStatement(q.statement)
 
-      const answerType = detectAnswerType(itemLabel, q.statement)
+      // Use question_type from AI if present, otherwise detect from context
+      const questionType: ParsedAssessmentQuestion["question_type"] =
+        q.question_type && q.question_type !== "development"
+          ? q.question_type
+          : detectQuestionType(itemLabel, q.statement)
 
-      const updatedQuestion: ParsedQuestionExtended = {
+      // Merge alternatives from AI with extracted ones
+      const mergedAlternatives =
+        (q.alternatives && q.alternatives.length > 0)
+          ? q.alternatives
+          : detected.alternatives
+
+      const enriched: ParsedAssessmentQuestion = {
         ...q,
+        question_type: questionType,
         statement: detected.cleanStatement || q.statement,
-        options: detected.options,
-        answer_type: answerType,
-        correct_answer: null,
+        alternatives: questionType === "true_false"
+          ? [{ label: "V", text: "Verdadero" }, { label: "F", text: "Falso" }]
+          : mergedAlternatives,
+        sub_parts: q.sub_parts ?? [],
       }
 
-      // Refuerzo para V/F: si el parser no agregó tipo, se lo dejamos explícito.
-      if (answerType === "true_false") {
-        updatedQuestion.options = ["V", "F"]
-      }
-
-      return updatedQuestion
+      return enriched
     })
 
     return {
       ...item,
+      item_type: detectedItemType,
       questions,
     }
   })
 
-  // Segundo pase: si la IA perdió alternativas de selección múltiple,
-  // intentamos recuperarlas desde el texto completo del PDF.
-  extended.items = extended.items.map((item) => {
+  // Second pass: recover missing MC alternatives from raw PDF text
+  const finalItems = enrichedItems.map((item) => {
     if (!/selecci[oó]n m[uú]ltiple/i.test(item.label)) return item
 
     const rebuiltQuestions = item.questions.map((q, index) => {
-      if (q.options && q.options.length >= 2) return q
+      if (q.alternatives && q.alternatives.length >= 2) return q
 
       const currentNumber = index + 1
       const nextNumber = currentNumber + 1
@@ -156,22 +161,20 @@ function enrichParsedAssessment(
       if (!found?.[1]) return q
 
       const detected = extractOptionsFromStatement(found[1])
+      if (detected.alternatives.length < 2) return q
 
       return {
         ...q,
         statement: detected.cleanStatement || q.statement,
-        options: detected.options,
-        answer_type: "multiple_choice" as const,
+        alternatives: detected.alternatives,
+        question_type: "multiple_choice" as const,
       }
     })
 
-    return {
-      ...item,
-      questions: rebuiltQuestions,
-    }
+    return { ...item, questions: rebuiltQuestions }
   })
 
-  return extended
+  return { ...parsed, items: finalItems }
 }
 
 export async function parseAssessmentStructureWithAI(
