@@ -11,13 +11,22 @@ class UploadService {
     required String questionId,
   }) async {
     final ext = imageFile.path.split('.').last.toLowerCase();
-    final path = 'submissions/$submissionId/$questionId.$ext';
+    final safeExt = ['jpg', 'jpeg', 'png', 'webp', 'heic'].contains(ext) ? ext : 'jpg';
+    final contentType = safeExt == 'png'
+        ? 'image/png'
+        : safeExt == 'webp'
+            ? 'image/webp'
+            : safeExt == 'heic'
+                ? 'image/heic'
+                : 'image/jpeg';
+
+    final path = 'submissions/$submissionId/$questionId.$safeExt';
 
     await _sb.storage.from('submission-images').upload(
-      path,
-      imageFile,
-      fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
-    );
+          path,
+          imageFile,
+          fileOptions: FileOptions(upsert: true, contentType: contentType),
+        );
 
     return path;
   }
