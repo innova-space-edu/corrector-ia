@@ -30,6 +30,30 @@ type StudentMemory = {
   last_updated?: string
 }
 
+type RawSubmission = Omit<SubmissionWithAssessment, "assessments"> & {
+  assessments:
+    | { title?: string | null; subject?: string | null; grade_level?: string | null }
+    | { title?: string | null; subject?: string | null; grade_level?: string | null }[]
+    | null
+}
+
+function normalizeSubmission(row: RawSubmission): SubmissionWithAssessment {
+  const assessment = Array.isArray(row.assessments)
+    ? row.assessments[0] ?? null
+    : row.assessments
+
+  return {
+    ...row,
+    assessments: assessment
+      ? {
+          title: assessment.title ?? "—",
+          subject: assessment.subject ?? "—",
+          grade_level: assessment.grade_level ?? undefined,
+        }
+      : null,
+  }
+}
+
 const TREND_ICON: Record<string, string> = {
   mejorando: "↑", estable: "→", bajando: "↓",
 }
@@ -63,7 +87,7 @@ export default function StudentProfilePage() {
         supabase.from("student_memory").select("*").eq("student_id", studentId).single(),
       ])
       setStudent(s)
-      setSubmissions(subs ?? [])
+      setSubmissions(((subs ?? []) as RawSubmission[]).map(normalizeSubmission))
       setMemory(mem)
       setLoading(false)
     }
