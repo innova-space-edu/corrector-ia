@@ -94,3 +94,10 @@ CREATE INDEX IF NOT EXISTS idx_library_public ON library_exams(is_public);
 
 -- 9. Hacer admin al primer usuario (reemplaza con el email del admin)
 -- UPDATE teachers SET role = 'admin' WHERE email = 'tu-email@colegio.cl';
+
+-- ── REALTIME — activar publicación para sincronización en tiempo real ────────
+-- Ejecutar en Supabase SQL Editor para que app y web se sincronicen en vivo
+ALTER PUBLICATION supabase_realtime ADD TABLE assessments;
+ALTER PUBLICATION supabase_realtime ADD TABLE submissions;
+ALTER PUBLICATION supabase_realtime ADD TABLE submission_pages;
+ALTER PUBLICATION supabase_realtime ADD TABLE grading_results;
