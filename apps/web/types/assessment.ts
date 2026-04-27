@@ -47,6 +47,7 @@ export type Assessment = {
   official_pdf_path?: string
   official_test_text?: string
   official_test_json?: ParsedAssessmentStructure
+  answer_key_json?: Record<string, string>
   rubric_json?: Record<string, unknown>
   status: "draft" | "active" | "closed" | "archived"
   grading_mode: "auto" | "semi" | "manual"
