@@ -1,0 +1,1 @@
+// escucha realtime supabase
