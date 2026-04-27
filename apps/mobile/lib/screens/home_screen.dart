@@ -10,7 +10,7 @@ import 'assessments_screen.dart';
 import 'change_password_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════
-// HOME SCREEN — raíz con Scaffold + Drawer + BottomNav
+// HOME SCREEN — Scaffold raíz con GlobalKey para el drawer
 // ═══════════════════════════════════════════════════════════════
 
 class HomeScreen extends StatefulWidget {
@@ -20,21 +20,27 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  // FIX DEFINITIVO: GlobalKey para controlar el drawer desde cualquier pestaña
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   int _tab = 0;
 
-  void switchTab(int i) => setState(() => _tab = i);
+  void _openDrawer() => _scaffoldKey.currentState?.openDrawer();
+  void _switchTab(int i) => setState(() => _tab = i);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Drawer va en el Scaffold RAÍZ para que funcione con cualquier tab
-      drawer: _AppDrawer(onSwitchTab: switchTab),
+      key: _scaffoldKey,
+      drawer: _AppDrawer(
+        onSwitchTab: _switchTab,
+        scaffoldKey: _scaffoldKey,
+      ),
       body: IndexedStack(index: _tab, children: [
-        _HomeTab(onSwitchTab: switchTab),
+        _HomeTab(onSwitchTab: _switchTab, onOpenDrawer: _openDrawer),
         const AssessmentsScreen(),
-        _UploadTab(onSwitchTab: switchTab),
+        _UploadTab(onSwitchTab: _switchTab),
       ]),
-      bottomNavigationBar: _BottomNav(tab: _tab, onTap: switchTab),
+      bottomNavigationBar: _BottomNav(tab: _tab, onTap: _switchTab),
     );
   }
 }
@@ -74,15 +80,21 @@ class _BottomNav extends StatelessWidget {
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
-                      color: active ? AppColors.primary.withOpacity(0.09) : Colors.transparent,
+                      color: active
+                          ? AppColors.primary.withOpacity(0.09)
+                          : Colors.transparent,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(active ? ai : ic,
-                          color: active ? AppColors.primary : AppColors.textHint, size: 24),
+                      Icon(
+                        active ? ai : ic,
+                        color: active ? AppColors.primary : AppColors.textHint,
+                        size: 24,
+                      ),
                       const SizedBox(height: 3),
                       Text(lbl, style: TextStyle(
-                        fontSize: 11, fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+                        fontSize: 11,
+                        fontWeight: active ? FontWeight.w600 : FontWeight.normal,
                         color: active ? AppColors.primary : AppColors.textHint,
                       )),
                     ]),
@@ -101,7 +113,10 @@ class _BottomNav extends StatelessWidget {
 
 class _AppDrawer extends StatelessWidget {
   final ValueChanged<int> onSwitchTab;
-  const _AppDrawer({required this.onSwitchTab});
+  final GlobalKey<ScaffoldState> scaffoldKey;
+  const _AppDrawer({required this.onSwitchTab, required this.scaffoldKey});
+
+  void _close(BuildContext context) => Navigator.pop(context);
 
   @override
   Widget build(BuildContext context) {
@@ -111,125 +126,147 @@ class _AppDrawer extends StatelessWidget {
 
     return Drawer(
       backgroundColor: Colors.white,
-      child: SafeArea(child: Column(children: [
-
-        // Header degradado
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppColors.primary, Color(0xFF1D4ED8)],
-              begin: Alignment.topLeft, end: Alignment.bottomRight,
-            ),
-          ),
-          child: Row(children: [
-            // Avatar con inicial o ícono
-            Container(
-              width: 52, height: 52,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
+      child: SafeArea(
+        child: Column(children: [
+          // Header degradado
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.primary, Color(0xFF1D4ED8)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.asset(
-                  'assets/icon/corrector_ia_docente.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Center(
-                    child: Text(initial,
-                        style: const TextStyle(color: AppColors.primary,
-                            fontWeight: FontWeight.w800, fontSize: 22)),
+            ),
+            child: Row(children: [
+              Container(
+                width: 52, height: 52,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Image.asset(
+                    'assets/icon/corrector_ia_docente.png',
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Center(
+                      child: Text(initial,
+                          style: const TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 22)),
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Corrector IA',
-                  style: TextStyle(color: Colors.white, fontSize: 16,
-                      fontWeight: FontWeight.w800)),
-              const SizedBox(height: 2),
-              Text(email,
-                  style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
+              const SizedBox(width: 14),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Corrector IA',
+                    style: TextStyle(color: Colors.white, fontSize: 16,
+                        fontWeight: FontWeight.w800)),
+                const SizedBox(height: 2),
+                Text(email,
+                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
+                    maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text('Docente activo',
+                      style: TextStyle(color: Colors.white, fontSize: 10,
+                          fontWeight: FontWeight.w500)),
                 ),
-                child: const Text('Docente activo',
-                    style: TextStyle(color: Colors.white, fontSize: 10,
-                        fontWeight: FontWeight.w500)),
-              ),
-            ])),
-          ]),
-        ),
-
-        // Sección: Navegación
-        _DrawerSection('Navegación', [
-          _DrawerTile(Icons.home_rounded, 'Inicio', () {
-            Navigator.pop(context);
-            onSwitchTab(0);
-          }),
-          _DrawerTile(Icons.assignment_rounded, 'Evaluaciones', () {
-            Navigator.pop(context);
-            onSwitchTab(1);
-          }),
-          _DrawerTile(Icons.camera_alt_rounded, 'Subir ejercicios', () {
-            Navigator.pop(context);
-            onSwitchTab(2);
-          }),
-        ]),
-
-        // Sección: Cuenta
-        _DrawerSection('Mi cuenta', [
-          _DrawerTile(Icons.lock_outline_rounded, 'Cambiar contraseña', () {
-            Navigator.pop(context);
-            Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const ChangePasswordScreen()));
-          }),
-          _DrawerTile(Icons.sync_rounded, 'Sincronizar', () {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('✓ Sincronizado con el panel web'),
-                  backgroundColor: AppColors.success),
-            );
-          }),
-          _DrawerTile(Icons.info_outline_rounded, 'Cómo usar la app', () {
-            Navigator.pop(context);
-            _showHelp(context);
-          }),
-        ]),
-
-        const Spacer(),
-        const Divider(color: AppColors.border, indent: 16, endIndent: 16),
-
-        // Cerrar sesión
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          child: ListTile(
-            leading: const Icon(Icons.logout_rounded, color: AppColors.error, size: 22),
-            title: const Text('Cerrar sesión',
-                style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            tileColor: AppColors.error.withOpacity(0.05),
-            onTap: () async {
-              Navigator.pop(context);
-              await Supabase.instance.client.auth.signOut();
-              if (context.mounted) {
-                Navigator.pushAndRemoveUntil(context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (_) => false);
-              }
-            },
+              ])),
+            ]),
           ),
-        ),
-      ])),
+
+          // Sección: Navegación
+          _section('Navegación', [
+            _item(Icons.home_rounded, 'Inicio', () { _close(context); onSwitchTab(0); }),
+            _item(Icons.assignment_rounded, 'Evaluaciones', () { _close(context); onSwitchTab(1); }),
+            _item(Icons.camera_alt_rounded, 'Subir ejercicios', () { _close(context); onSwitchTab(2); }),
+          ]),
+
+          // Sección: Cuenta
+          _section('Mi cuenta', [
+            _item(Icons.lock_outline_rounded, 'Cambiar contraseña', () {
+              _close(context);
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const ChangePasswordScreen()));
+            }),
+            _item(Icons.sync_rounded, 'Sincronizar', () {
+              _close(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                    content: Text('✓ Sincronizado con el panel web'),
+                    backgroundColor: AppColors.success),
+              );
+            }),
+            _item(Icons.info_outline_rounded, 'Cómo usar la app', () {
+              _close(context);
+              _showHelp(context);
+            }),
+          ]),
+
+          const Spacer(),
+          const Divider(color: AppColors.border, indent: 16, endIndent: 16),
+
+          // Cerrar sesión
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: ListTile(
+              leading: const Icon(Icons.logout_rounded, color: AppColors.error, size: 22),
+              title: const Text('Cerrar sesión',
+                  style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              tileColor: AppColors.error.withOpacity(0.05),
+              onTap: () async {
+                _close(context);
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                    (_) => false,
+                  );
+                }
+              },
+            ),
+          ),
+        ]),
+      ),
     );
   }
+
+  Widget _section(String title, List<Widget> items) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+        child: Text(title.toUpperCase(),
+            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                color: AppColors.textHint, letterSpacing: 1)),
+      ),
+      ...items,
+    ],
+  );
+
+  Widget _item(IconData icon, String label, VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
+    child: ListTile(
+      leading: Icon(icon, color: AppColors.textSecondary, size: 21),
+      title: Text(label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      dense: true,
+      onTap: onTap,
+    ),
+  );
 
   void _showHelp(BuildContext context) {
     showModalBottomSheet(
@@ -244,26 +281,21 @@ class _AppDrawer extends StatelessWidget {
           controller: ctrl,
           padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Center(child: Container(width: 36, height: 4,
+            Center(child: Container(
+                width: 36, height: 4,
                 margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: AppColors.border,
-                    borderRadius: BorderRadius.circular(2)))),
+                decoration: BoxDecoration(
+                    color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
             const Text('Cómo usar la app',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 16),
             ...[
-              ('1', 'Crea la evaluación en la web',
-                  'Entra a corrector-ia-beryl.vercel.app y crea la prueba'),
-              ('2', 'Actívala en el panel web',
-                  'Cambia el estado a "Activa" para que aparezca en la app'),
-              ('3', 'Selecciona la evaluación',
-                  'Toca en una evaluación activa en el tab "Evaluaciones"'),
-              ('4', 'Ingresa el nombre del estudiante',
-                  'Escribe el nombre completo antes de subir'),
-              ('5', 'Toma fotos guiadas',
-                  'La app te muestra cada ejercicio para fotografiarlo'),
-              ('6', 'La IA corrige automáticamente',
-                  'En minutos tendrás los resultados en el panel web'),
+              ('1', 'Crea la evaluación en la web', 'Entra a corrector-ia-beryl.vercel.app'),
+              ('2', 'Actívala en el panel web', 'Cambia el estado a "Activa"'),
+              ('3', 'Selecciona la evaluación', 'Toca en Evaluaciones en la app'),
+              ('4', 'Ingresa el nombre del estudiante', 'Nombre completo + curso'),
+              ('5', 'Toma fotos guiadas', 'La app te muestra cada ejercicio'),
+              ('6', 'La IA corrige automáticamente', 'Resultados en el panel web en minutos'),
             ].map((s) => Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -277,10 +309,12 @@ class _AppDrawer extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(s.$2, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  Text(s.$2,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   const SizedBox(height: 2),
-                  Text(s.$3, style: const TextStyle(
-                      color: AppColors.textSecondary, fontSize: 12, height: 1.4)),
+                  Text(s.$3,
+                      style: const TextStyle(color: AppColors.textSecondary,
+                          fontSize: 12, height: 1.4)),
                 ])),
               ]),
             )),
@@ -291,48 +325,15 @@ class _AppDrawer extends StatelessWidget {
   }
 }
 
-class _DrawerSection extends StatelessWidget {
-  final String title;
-  final List<_DrawerTile> tiles;
-  const _DrawerSection(this.title, this.tiles);
-  @override
-  Widget build(BuildContext context) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-        child: Text(title.toUpperCase(),
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-                color: AppColors.textHint, letterSpacing: 1)),
-      ),
-      ...tiles.map((t) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 1),
-        child: ListTile(
-          leading: Icon(t.icon, color: AppColors.textSecondary, size: 21),
-          title: Text(t.label,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          dense: true,
-          onTap: t.onTap,
-        ),
-      )),
-    ]);
-  }
-}
-
-class _DrawerTile {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  const _DrawerTile(this.icon, this.label, this.onTap);
-}
-
 // ═══════════════════════════════════════════════════════════════
-// HOME TAB — dashboard principal
+// HOME TAB — NO tiene Scaffold propio, usa el raíz
+// FIX: recibe onOpenDrawer como callback directo al GlobalKey
 // ═══════════════════════════════════════════════════════════════
 
 class _HomeTab extends StatefulWidget {
   final ValueChanged<int> onSwitchTab;
-  const _HomeTab({required this.onSwitchTab});
+  final VoidCallback onOpenDrawer; // FIX: callback directo a _scaffoldKey.openDrawer()
+  const _HomeTab({required this.onSwitchTab, required this.onOpenDrawer});
   @override
   State<_HomeTab> createState() => _HomeTabState();
 }
@@ -366,191 +367,223 @@ class _HomeTabState extends State<_HomeTab> {
     final h = DateTime.now().hour;
     final greeting = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches';
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        // Builder indispensable para que openDrawer acceda al Scaffold raíz
-        leading: Builder(builder: (ctx) => IconButton(
-          icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary),
-          tooltip: 'Menú',
-          onPressed: () => Scaffold.of(ctx).openDrawer(),
-        )),
-        title: Row(children: [
-          Container(width: 28, height: 28,
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(8),
-                color: AppColors.primary.withOpacity(0.1)),
-            child: ClipRRect(borderRadius: BorderRadius.circular(8),
-              child: Image.asset('assets/icon/corrector_ia_docente.png', fit: BoxFit.cover,
+    // FIX CRÍTICO: CustomScrollView con SliverAppBar — NO Scaffold interno
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverAppBar(
+          backgroundColor: Colors.white,
+          pinned: true,
+          elevation: 0,
+          // FIX: usa widget.onOpenDrawer que apunta directo al GlobalKey
+          leading: IconButton(
+            icon: const Icon(Icons.menu_rounded, color: AppColors.textPrimary),
+            tooltip: 'Menú',
+            onPressed: widget.onOpenDrawer, // <-- directo al GlobalKey, sin Builder
+          ),
+          title: Row(children: [
+            Container(
+              width: 28, height: 28,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: AppColors.primary.withOpacity(0.1),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  'assets/icon/corrector_ia_docente.png',
+                  fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => const Icon(
-                      Icons.school_rounded, size: 16, color: AppColors.primary))),
-          ),
-          const SizedBox(width: 8),
-          const Text('Corrector IA'),
-        ]),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
-            tooltip: 'Sincronizar',
-            onPressed: _load,
-          ),
-        ],
-        bottom: const PreferredSize(preferredSize: Size.fromHeight(0.5),
-            child: Divider(height: 0.5, color: AppColors.border)),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _load, color: AppColors.primary,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(18),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-            // Bienvenida
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                    colors: [AppColors.primary, Color(0xFF1D4ED8)],
-                    begin: Alignment.topLeft, end: Alignment.bottomRight),
-                borderRadius: BorderRadius.circular(20),
+                      Icons.school_rounded, size: 16, color: AppColors.primary),
+                ),
               ),
-              child: Row(children: [
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('$greeting,',
-                      style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14)),
-                  const SizedBox(height: 2),
-                  Text(name, style: const TextStyle(
-                      color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('Panel docente activo',
-                        style: TextStyle(color: Colors.white, fontSize: 11,
-                            fontWeight: FontWeight.w500)),
-                  ),
-                ])),
-                const SizedBox(width: 12),
-                Container(width: 56, height: 56,
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.18),
-                      borderRadius: BorderRadius.circular(16)),
-                  child: const Icon(Icons.school_rounded, color: Colors.white, size: 28)),
-              ]),
             ),
-
-            const SizedBox(height: 20),
-
-            // Stats
-            Row(children: [
-              _StatCard('Total', _total, Icons.list_alt_rounded, AppColors.primary),
-              const SizedBox(width: 10),
-              _StatCard('Activas', _active, Icons.check_circle_rounded, AppColors.success),
-              const SizedBox(width: 10),
-              _StatCard('Borradores', _total - _active,
-                  Icons.edit_note_rounded, AppColors.warning),
-            ]),
-
-            const SizedBox(height: 20),
-
-            // Acciones rápidas
-            const Text('Acciones rápidas',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 12),
-            Row(children: [
-              Expanded(child: _QuickBtn(
-                icon: Icons.camera_alt_rounded, label: 'Subir\nEjercicios',
-                color: AppColors.primary, onTap: () => widget.onSwitchTab(2),
-              )),
-              const SizedBox(width: 10),
-              Expanded(child: _QuickBtn(
-                icon: Icons.assignment_rounded, label: 'Ver\nEvaluaciones',
-                color: AppColors.success, onTap: () => widget.onSwitchTab(1),
-              )),
-              const SizedBox(width: 10),
-              Expanded(child: _QuickBtn(
-                icon: Icons.sync_rounded, label: 'Sincro-\nnizar',
-                color: AppColors.warning, onTap: _load,
-              )),
-            ]),
-
-            const SizedBox(height: 20),
-
-            // Evaluaciones recientes
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              const Text('Evaluaciones recientes',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary)),
-              TextButton(
-                onPressed: () => widget.onSwitchTab(1),
-                child: const Text('Ver todas', style: TextStyle(fontSize: 13)),
-              ),
-            ]),
-            const SizedBox(height: 8),
-
-            if (_loading)
-              const Center(child: Padding(padding: EdgeInsets.all(24),
-                  child: CircularProgressIndicator(color: AppColors.primary)))
-            else if (_recent.isEmpty)
-              _EmptyCard(
-                icon: Icons.assignment_outlined,
-                title: 'Sin evaluaciones',
-                body: 'Crea y activa una evaluación desde el panel web.\nAparecerá aquí automáticamente.',
-                actionLabel: 'Recargar',
-                onAction: _load,
-              )
-            else
-              ..._recent.map((a) => _AssCard(
-                assessment: a,
-                onTap: () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => UploadScreen(assessment: a))),
-              )),
-
-            const SizedBox(height: 16),
-            // Tip
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.07),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.25)),
-              ),
-              child: const Row(children: [
-                Icon(Icons.tips_and_updates_rounded, color: Color(0xFF10B981), size: 18),
-                SizedBox(width: 10),
-                Expanded(child: Text(
-                  'Las evaluaciones del panel web se sincronizan automáticamente. '
-                  'Toca el ícono ↺ para actualizar.',
-                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.4),
-                )),
-              ]),
-            ),
+            const SizedBox(width: 8),
+            const Text('Corrector IA'),
           ]),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+              tooltip: 'Sincronizar',
+              onPressed: _load,
+            ),
+          ],
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(0.5),
+            child: Divider(height: 0.5, color: AppColors.border),
+          ),
         ),
-      ),
+
+        SliverToBoxAdapter(
+          child: RefreshIndicator(
+            onRefresh: _load,
+            color: AppColors.primary,
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+
+                // Bienvenida
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [AppColors.primary, Color(0xFF1D4ED8)],
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('$greeting,',
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.85), fontSize: 14)),
+                      const SizedBox(height: 2),
+                      Text(name, style: const TextStyle(
+                          color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text('Panel docente activo',
+                            style: TextStyle(color: Colors.white, fontSize: 11,
+                                fontWeight: FontWeight.w500)),
+                      ),
+                    ])),
+                    const SizedBox(width: 12),
+                    Container(
+                      width: 56, height: 56,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.18),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(Icons.school_rounded,
+                          color: Colors.white, size: 28),
+                    ),
+                  ]),
+                ),
+
+                const SizedBox(height: 20),
+
+                // Stats
+                Row(children: [
+                  _Stat('Total', _total, Icons.list_alt_rounded, AppColors.primary),
+                  const SizedBox(width: 10),
+                  _Stat('Activas', _active, Icons.check_circle_rounded, AppColors.success),
+                  const SizedBox(width: 10),
+                  _Stat('Borradores', _total - _active,
+                      Icons.edit_note_rounded, AppColors.warning),
+                ]),
+
+                const SizedBox(height: 20),
+
+                // Acciones rápidas
+                const Text('Acciones rápidas',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: _QuickBtn(
+                    icon: Icons.camera_alt_rounded, label: 'Subir\nEjercicios',
+                    color: AppColors.primary, onTap: () => widget.onSwitchTab(2),
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _QuickBtn(
+                    icon: Icons.assignment_rounded, label: 'Ver\nEvaluaciones',
+                    color: AppColors.success, onTap: () => widget.onSwitchTab(1),
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _QuickBtn(
+                    icon: Icons.sync_rounded, label: 'Sincro-\nnizar',
+                    color: AppColors.warning, onTap: _load,
+                  )),
+                ]),
+
+                const SizedBox(height: 20),
+
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  const Text('Evaluaciones recientes',
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                          color: AppColors.textPrimary)),
+                  TextButton(
+                    onPressed: () => widget.onSwitchTab(1),
+                    child: const Text('Ver todas', style: TextStyle(fontSize: 13)),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+
+                if (_loading)
+                  const Center(child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: CircularProgressIndicator(color: AppColors.primary)))
+                else if (_recent.isEmpty)
+                  _Empty(
+                    icon: Icons.assignment_outlined,
+                    title: 'Sin evaluaciones',
+                    body: 'Crea y activa una evaluación desde el panel web.\nAparecerá aquí automáticamente.',
+                    actionLabel: 'Recargar', onAction: _load,
+                  )
+                else
+                  ..._recent.map((a) => _AssCard(
+                    assessment: a,
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => UploadScreen(assessment: a))),
+                  )),
+
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: AppColors.success.withOpacity(0.25)),
+                  ),
+                  child: const Row(children: [
+                    Icon(Icons.tips_and_updates_rounded,
+                        color: AppColors.success, size: 18),
+                    SizedBox(width: 10),
+                    Expanded(child: Text(
+                      'Las evaluaciones del panel web se sincronizan automáticamente. '
+                      'Toca ↺ para actualizar.',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary,
+                          height: 1.4),
+                    )),
+                  ]),
+                ),
+                const SizedBox(height: 24),
+              ]),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
+// ─── Widgets compartidos ──────────────────────────────────────
+
+class _Stat extends StatelessWidget {
   final String label; final int value; final IconData icon; final Color color;
-  const _StatCard(this.label, this.value, this.icon, this.color);
+  const _Stat(this.label, this.value, this.icon, this.color);
   @override
   Widget build(BuildContext context) => Expanded(
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
-      decoration: BoxDecoration(color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: color.withOpacity(0.2))),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
       child: Column(children: [
         Icon(icon, color: color, size: 22),
         const SizedBox(height: 5),
-        Text('$value', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: color)),
-        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+        Text('$value', style: TextStyle(
+            fontSize: 20, fontWeight: FontWeight.w800, color: color)),
+        Text(label, style: const TextStyle(
+            fontSize: 10, color: AppColors.textSecondary)),
       ]),
     ),
   );
@@ -558,15 +591,18 @@ class _StatCard extends StatelessWidget {
 
 class _QuickBtn extends StatelessWidget {
   final IconData icon; final String label; final Color color; final VoidCallback onTap;
-  const _QuickBtn({required this.icon, required this.label, required this.color, required this.onTap});
+  const _QuickBtn({required this.icon, required this.label,
+      required this.color, required this.onTap});
   @override
   Widget build(BuildContext context) => GestureDetector(
     onTap: onTap,
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-      decoration: BoxDecoration(color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2))),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
       child: Column(children: [
         Icon(icon, color: color, size: 26),
         const SizedBox(height: 6),
@@ -578,17 +614,19 @@ class _QuickBtn extends StatelessWidget {
   );
 }
 
-class _EmptyCard extends StatelessWidget {
+class _Empty extends StatelessWidget {
   final IconData icon; final String title; final String body;
   final String? actionLabel; final VoidCallback? onAction;
-  const _EmptyCard({required this.icon, required this.title, required this.body,
+  const _Empty({required this.icon, required this.title, required this.body,
       this.actionLabel, this.onAction});
   @override
   Widget build(BuildContext context) => Container(
     width: double.infinity,
     padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border)),
+    decoration: BoxDecoration(
+      color: Colors.white, borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: AppColors.border),
+    ),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
       Icon(icon, size: 40, color: AppColors.textHint),
       const SizedBox(height: 10),
@@ -599,12 +637,14 @@ class _EmptyCard extends StatelessWidget {
           style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.5)),
       if (onAction != null) ...[
         const SizedBox(height: 14),
-        OutlinedButton(onPressed: onAction,
+        OutlinedButton(
+          onPressed: onAction,
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: AppColors.primary),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          child: Text(actionLabel ?? 'Recargar')),
+          child: Text(actionLabel ?? 'Recargar'),
+        ),
       ],
     ]),
   );
@@ -621,16 +661,22 @@ class _AssCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border)),
+        decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
         child: Row(children: [
-          Container(width: 44, height: 44,
-            decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-            child: Icon(AppTheme.subjectIcon(assessment.subject), color: c, size: 22)),
+          Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            child: Icon(AppTheme.subjectIcon(assessment.subject), color: c, size: 22),
+          ),
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(assessment.title, style: const TextStyle(fontSize: 13,
-                fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            Text(assessment.title,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
             const SizedBox(height: 4),
             Row(children: [
@@ -643,7 +689,7 @@ class _AssCard extends StatelessWidget {
               _StatusDot(assessment.status),
             ]),
           ])),
-          Icon(Icons.chevron_right_rounded, color: AppColors.textHint, size: 20),
+          const Icon(Icons.chevron_right_rounded, color: AppColors.textHint, size: 20),
         ]),
       ),
     );
@@ -656,7 +702,8 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-    decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+    decoration: BoxDecoration(
+        color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
     child: Text(t, style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w500)),
   );
 }
@@ -674,14 +721,16 @@ class _StatusDot extends StatelessWidget {
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(color: c.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
-      child: Text(lbl, style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(
+          color: c.withOpacity(0.12), borderRadius: BorderRadius.circular(20)),
+      child: Text(lbl, style: TextStyle(
+          fontSize: 10, color: c, fontWeight: FontWeight.w600)),
     );
   }
 }
 
 // ═══════════════════════════════════════════════════════════════
-// UPLOAD TAB — subida rápida (tab 3)
+// UPLOAD TAB — tampoco tiene Scaffold propio
 // ═══════════════════════════════════════════════════════════════
 
 class _UploadTab extends StatefulWidget {
@@ -706,44 +755,49 @@ class _UploadTabState extends State<_UploadTab> {
       final data = await _svc.getAllAssessments();
       setState(() { _list = data; _loading = false; });
     } catch (e) {
-      setState(() { _error = 'Error de conexión. Verifica tu internet.'; _loading = false; });
+      setState(() { _error = 'Error de conexión'; _loading = false; });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: const Text('Subir ejercicios'),
-        automaticallyImplyLeading: false,
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
-              onPressed: _load),
-        ],
-        bottom: const PreferredSize(preferredSize: Size.fromHeight(0.5),
-            child: Divider(height: 0.5, color: AppColors.border)),
+    return Column(children: [
+      // AppBar manual sin Scaffold
+      Container(
+        color: Colors.white,
+        padding: EdgeInsets.only(
+            top: MediaQuery.of(context).padding.top + 8,
+            left: 20, right: 8, bottom: 12),
+        child: Row(children: [
+          const Expanded(child: Text('Subir ejercicios',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary))),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.textSecondary),
+            onPressed: _load,
+          ),
+        ]),
       ),
-      body: _loading
+      const Divider(height: 0.5, color: AppColors.border),
+
+      Expanded(child: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _error != null
               ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
                   const Icon(Icons.wifi_off_rounded, size: 44, color: AppColors.textHint),
                   const SizedBox(height: 12),
-                  Text(_error!, textAlign: TextAlign.center,
-                      style: const TextStyle(color: AppColors.textSecondary)),
+                  Text(_error!, style: const TextStyle(color: AppColors.textSecondary)),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(onPressed: _load,
                       icon: const Icon(Icons.refresh_rounded, size: 18),
                       label: const Text('Reintentar')),
                 ]))
               : _list.isEmpty
-                  ? Center(child: _EmptyCard(
+                  ? Center(child: _Empty(
                       icon: Icons.assignment_outlined,
                       title: 'Sin evaluaciones',
-                      body: 'Crea una evaluación en el panel web y actívala para que aparezca aquí.',
-                      actionLabel: 'Recargar',
-                      onAction: _load,
+                      body: 'Activa una evaluación desde el panel web',
+                      actionLabel: 'Recargar', onAction: _load,
                     ))
                   : RefreshIndicator(
                       onRefresh: _load, color: AppColors.primary,
@@ -758,17 +812,16 @@ class _UploadTabState extends State<_UploadTab> {
                                 ? () => ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
                                       content: Text(
-                                          '⚠ Esta evaluación no tiene PDF analizado. '
-                                          'Analízalo desde el panel web primero.'),
+                                          '⚠ Analiza el PDF desde el panel web primero'),
                                       backgroundColor: AppColors.warning,
-                                      duration: Duration(seconds: 4),
                                     ))
                                 : () => Navigator.push(context,
-                                    MaterialPageRoute(builder: (_) => UploadScreen(assessment: a))),
+                                    MaterialPageRoute(builder: (_) =>
+                                        UploadScreen(assessment: a))),
                           );
                         },
                       ),
-                    ),
-    );
+                    )),
+    ]);
   }
 }
